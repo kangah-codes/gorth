@@ -23,7 +23,38 @@ This project is a stack-based programming language implemented in Go. It provide
 
 Have go installed, and run `go run gorth.go`. To test, run `go test`.
 
-As of now, programs on the stack are hardcoded. Will soon get to parsing and reading a program onto the stack.
+Run a gorth file
+`go run gorth.go ./hello.gorth -d -s`
+
+`-d` is for debug mode, `-s` is for strict mode.
+
+In strict mode, all values on the stack have to be consumed by the end of the program, otherwise you get a big fat error. In non-strict mode, the stack can have values left over. Don't ask me why 🤷🏾‍♀️
+
+Gorth supports various built-in operators, including arithmetic operations (+, -, \*, /, %, ^), logical operations (&&, ||, !), and comparison operations (==, !=, ===). Working on adding >, <, >=, <=.
+
+## Examples
+
+### Hello World
+
+```gorth
+"Hello, World!" print drop
+
+# or
+
+"Hello, World!" dump
+```
+
+### Simple Arithmetic
+
+```gorth
+1 2 + print drop # 3
+```
+
+### Logical Operations
+
+```gorth
+1 2 != print drop # true
+```
 
 ## Contributing
 
