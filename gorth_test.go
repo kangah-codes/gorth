@@ -255,3 +255,364 @@ func TestDmpOperation(t *testing.T) {
 		t.Errorf("Error in drop operation. Expected stack to be empty, got %v", g.ExecStack)
 	}
 }
+func TestAndOperation(t *testing.T) {
+	g := NewGorth(false, false)
+
+	// Test case 1: Both elements are true
+	err := g.ExecuteProgram(
+		[]StackElement{
+			{Value: true, Type: Bool},
+			{Value: true, Type: Bool},
+			{Value: AND_OP, Type: Operator},
+		},
+	)
+	if err != nil {
+		t.Errorf("Error performing AND operation: %v", err)
+	}
+
+	val, err := g.Pop()
+	if err != nil || val.Value != true {
+		t.Errorf("Error in AND operation. Expected result true, got %v", val.Value)
+	}
+
+	// Test case 2: One element is false
+	err = g.ExecuteProgram(
+		[]StackElement{
+			{Value: false, Type: Bool},
+			{Value: true, Type: Bool},
+			{Value: AND_OP, Type: Operator},
+		},
+	)
+	if err != nil {
+		t.Errorf("Error performing AND operation: %v", err)
+	}
+
+	val, err = g.Pop()
+	if err != nil || val.Value != false {
+		t.Errorf("Error in AND operation. Expected result false, got %v", val.Value)
+	}
+
+	// Test case 3: Both elements are false
+	err = g.ExecuteProgram(
+		[]StackElement{
+			{Value: false, Type: Bool},
+			{Value: false, Type: Bool},
+			{Value: AND_OP, Type: Operator},
+		},
+	)
+	if err != nil {
+		t.Errorf("Error performing AND operation: %v", err)
+	}
+
+	val, err = g.Pop()
+	if err != nil || val.Value != false {
+		t.Errorf("Error in AND operation. Expected result false, got %v", val.Value)
+	}
+
+	// Test case 4: One element is not a boolean
+	err = g.ExecuteProgram(
+		[]StackElement{
+			{Value: 5, Type: Int},
+			{Value: true, Type: Bool},
+			{Value: AND_OP, Type: Operator},
+		},
+	)
+	if err == nil {
+		t.Errorf("Expected error performing AND operation, but got nil")
+	}
+}
+func TestOrOperation(t *testing.T) {
+	g := NewGorth(false, false)
+
+	// Test case 1: Both elements are true
+	err := g.ExecuteProgram(
+		[]StackElement{
+			{Value: true, Type: Bool},
+			{Value: true, Type: Bool},
+			{Value: OR_OP, Type: Operator},
+		},
+	)
+	if err != nil {
+		t.Errorf("Error performing OR operation: %v", err)
+	}
+
+	val, err := g.Pop()
+	if err != nil || val.Value != true {
+		t.Errorf("Error in OR operation. Expected result true, got %v", val.Value)
+	}
+
+	// Test case 2: One element is false
+	err = g.ExecuteProgram(
+		[]StackElement{
+			{Value: false, Type: Bool},
+			{Value: true, Type: Bool},
+			{Value: OR_OP, Type: Operator},
+		},
+	)
+	if err != nil {
+		t.Errorf("Error performing OR operation: %v", err)
+	}
+
+	val, err = g.Pop()
+	if err != nil || val.Value != true {
+		t.Errorf("Error in OR operation. Expected result true, got %v", val.Value)
+	}
+
+	// Test case 3: Both elements are false
+	err = g.ExecuteProgram(
+		[]StackElement{
+			{Value: false, Type: Bool},
+			{Value: false, Type: Bool},
+			{Value: OR_OP, Type: Operator},
+		},
+	)
+	if err != nil {
+		t.Errorf("Error performing OR operation: %v", err)
+	}
+
+	val, err = g.Pop()
+	if err != nil || val.Value != false {
+		t.Errorf("Error in OR operation. Expected result false, got %v", val.Value)
+	}
+
+	// Test case 4: One element is not a boolean
+	err = g.ExecuteProgram(
+		[]StackElement{
+			{Value: 5, Type: Int},
+			{Value: true, Type: Bool},
+			{Value: OR_OP, Type: Operator},
+		},
+	)
+	if err == nil {
+		t.Errorf("Expected error performing OR operation, but got nil")
+	}
+}
+
+func TestNotOperation(t *testing.T) {
+	g := NewGorth(false, false)
+
+	// Test case 1: true -> false
+	err := g.ExecuteProgram(
+		[]StackElement{
+			{Value: true, Type: Bool},
+			{Value: NOT_OP, Type: Operator},
+		},
+	)
+	if err != nil {
+		t.Errorf("Error performing NOT operation: %v", err)
+	}
+
+	val, err := g.Pop()
+	if err != nil || val.Value != false {
+		t.Errorf("Error in NOT operation. Expected result false, got %v", val.Value)
+	}
+
+	// Test case 2: false -> true
+	err = g.ExecuteProgram(
+		[]StackElement{
+			{Value: false, Type: Bool},
+			{Value: NOT_OP, Type: Operator},
+		},
+	)
+	if err != nil {
+		t.Errorf("Error performing NOT operation: %v", err)
+	}
+
+	val, err = g.Pop()
+	if err != nil || val.Value != true {
+		t.Errorf("Error in NOT operation. Expected result true, got %v", val.Value)
+	}
+
+	// Test case 3: non-boolean value
+	err = g.ExecuteProgram(
+		[]StackElement{
+			{Value: 5, Type: Int},
+			{Value: NOT_OP, Type: Operator},
+		},
+	)
+	if err == nil {
+		t.Errorf("Expected error performing NOT operation, but got nil")
+	}
+}
+
+func TestEqualOperation(t *testing.T) {
+	g := NewGorth(false, false)
+
+	// Test case 1: Equal integers
+	err := g.ExecuteProgram(
+		[]StackElement{
+			{Value: 5, Type: Int},
+			{Value: 5, Type: Int},
+			{Value: EQUAL_OP, Type: Operator},
+		},
+	)
+	if err != nil {
+		t.Errorf("Error performing equal operation: %v", err)
+	}
+
+	val, err := g.Pop()
+	if err != nil || val.Value != true {
+		t.Errorf("Error in equal operation. Expected result true, got %v", val.Value)
+	}
+
+	// Test case 2: Unequal integers
+	err = g.ExecuteProgram(
+		[]StackElement{
+			{Value: 5, Type: Int},
+			{Value: 10, Type: Int},
+			{Value: EQUAL_OP, Type: Operator},
+		},
+	)
+	if err != nil {
+		t.Errorf("Error performing equal operation: %v", err)
+	}
+
+	val, err = g.Pop()
+	if err != nil || val.Value != false {
+		t.Errorf("Error in equal operation. Expected result false, got %v", val.Value)
+	}
+
+	// Test case 3: Equal booleans
+	err = g.ExecuteProgram(
+		[]StackElement{
+			{Value: true, Type: Bool},
+			{Value: true, Type: Bool},
+			{Value: EQUAL_OP, Type: Operator},
+		},
+	)
+	if err != nil {
+		t.Errorf("Error performing equal operation: %v", err)
+	}
+
+	val, err = g.Pop()
+	if err != nil || val.Value != true {
+		t.Errorf("Error in equal operation. Expected result true, got %v", val.Value)
+	}
+
+	// Test case 4: Unequal booleans
+	err = g.ExecuteProgram(
+		[]StackElement{
+			{Value: true, Type: Bool},
+			{Value: false, Type: Bool},
+			{Value: EQUAL_OP, Type: Operator},
+		},
+	)
+	if err != nil {
+		t.Errorf("Error performing equal operation: %v", err)
+	}
+
+	val, err = g.Pop()
+	if err != nil || val.Value != false {
+		t.Errorf("Error in equal operation. Expected result false, got %v", val.Value)
+	}
+
+	// Test case 5: Mixed types
+	err = g.ExecuteProgram(
+		[]StackElement{
+			{Value: 5, Type: Int},
+			{Value: true, Type: Bool},
+			{Value: EQUAL_OP, Type: Operator},
+		},
+	)
+
+	if err != nil {
+		t.Errorf("Error performing equal operation: %v", err)
+	}
+
+	val, err = g.Pop()
+
+	if err != nil || val.Value != false {
+		t.Errorf("Error in equal operation. Expected result false, got %v", val.Value)
+	}
+}
+func TestNotEqualOperation(t *testing.T) {
+	g := NewGorth(false, false)
+
+	// Test case 1: Equal elements
+	err := g.ExecuteProgram(
+		[]StackElement{
+			{Value: 5, Type: Int},
+			{Value: 5, Type: Int},
+			{Value: NOT_EQUAL_OP, Type: Operator},
+		},
+	)
+	if err != nil {
+		t.Errorf("Error performing not equal operation: %v", err)
+	}
+
+	val, err := g.Pop()
+	if err != nil || val.Value != false {
+		t.Errorf("Error in not equal operation. Expected result false, got %v", val.Value)
+	}
+
+	// Test case 2: Not equal elements
+	err = g.ExecuteProgram(
+		[]StackElement{
+			{Value: 5, Type: Int},
+			{Value: 10, Type: Int},
+			{Value: NOT_EQUAL_OP, Type: Operator},
+		},
+	)
+	if err != nil {
+		t.Errorf("Error performing not equal operation: %v", err)
+	}
+
+	val, err = g.Pop()
+	if err != nil || val.Value != true {
+		t.Errorf("Error in not equal operation. Expected result true, got %v", val.Value)
+	}
+
+	// Test case 3: Non-integer elements
+	err = g.ExecuteProgram(
+		[]StackElement{
+			{Value: "hello", Type: String},
+			{Value: "world", Type: String},
+			{Value: NOT_EQUAL_OP, Type: Operator},
+		},
+	)
+	if err != nil {
+		t.Errorf("Error performing not equal operation: %v", err)
+	}
+
+	val, err = g.Pop()
+	if err != nil || val.Value != true {
+		t.Errorf("Error in not equal operation. Expected result true, got %v", val.Value)
+	}
+}
+func TestEqualType(t *testing.T) {
+	g := NewGorth(false, false)
+
+	// Test case 1: Equal types
+	g.Push(StackElement{Value: 10, Type: Int})
+	g.Push(StackElement{Value: 20, Type: Int})
+
+	err := g.EqualType()
+	if err != nil {
+		t.Errorf("Error in EqualType: %v", err)
+	}
+
+	val, err := g.Pop()
+	if err != nil || val.Value != true {
+		t.Errorf("Error in EqualType. Expected result true, got %v", val.Value)
+	}
+
+	// Test case 2: Different types
+	g.Push(StackElement{Value: 10, Type: Int})
+	g.Push(StackElement{Value: true, Type: Bool})
+
+	err = g.EqualType()
+	if err != nil {
+		t.Errorf("Error in EqualType: %v", err)
+	}
+
+	val, err = g.Pop()
+	if err != nil || val.Value != false {
+		t.Errorf("Error in EqualType. Expected result false, got %v", val.Value)
+	}
+
+	// Test case 3: Empty stack
+	err = g.EqualType()
+	if err == nil {
+		t.Errorf("Expected error in EqualType, but got nil")
+	}
+}

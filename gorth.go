@@ -34,6 +34,14 @@ const (
 
 	// Print operation
 	PRINT_OP
+
+	// Logical operations
+	AND_OP
+	OR_OP
+	NOT_OP
+	EQUAL_OP
+	NOT_EQUAL_OP
+	EQUAL_TYP_OP // equal types
 )
 
 var operatorMap = map[string]Operation{
@@ -51,6 +59,12 @@ var operatorMap = map[string]Operation{
 	"drop":  DROP_OP,
 	"dump":  DUMP_OP,
 	"print": PRINT_OP,
+	"&&":    AND_OP,
+	"||":    OR_OP,
+	"!":     NOT_OP,
+	"==":    EQUAL_OP,
+	"!=":    NOT_EQUAL_OP,
+	"===":   EQUAL_TYP_OP,
 }
 
 type Type int
@@ -137,9 +151,11 @@ func parseElement(s string) (StackElement, error) {
 	} else if val, err := strconv.ParseFloat(s, 64); err == nil {
 		element.Type = Float
 		element.Value = val
-	} else {
+	} else if s[0] == '"' && s[len(s)-1] == '"' {
 		element.Type = String
 		element.Value = s
+	} else {
+		return StackElement{}, errors.New("ERROR: invalid token")
 	}
 	return element, nil
 }
@@ -451,6 +467,123 @@ func (g *Gorth) Dup() error {
 	return nil
 }
 
+func (g *Gorth) And() error {
+	// checks if the top two elements are both true
+	// only works if both elements are boolean
+	val1, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	val2, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	// check types
+	if val1.Type != Bool || val2.Type != Bool {
+		return errors.New("ERROR: cannot perform AND_OP on non boolean types")
+	}
+
+	// check values
+	if val1.Value.(bool) && val2.Value.(bool) {
+		g.Push(StackElement{Type: Bool, Value: true})
+	} else {
+		g.Push(StackElement{Type: Bool, Value: false})
+	}
+
+	return nil
+}
+
+func (g *Gorth) Or() error {
+	val1, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	val2, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	// check types
+	if val1.Type != Bool || val2.Type != Bool {
+		return errors.New("ERROR: cannot perform OR_OP on non boolean types")
+	}
+
+	if val1.Value.(bool) || val2.Value.(bool) {
+		g.Push(StackElement{Type: Bool, Value: true})
+	} else {
+		g.Push(StackElement{Type: Bool, Value: false})
+	}
+
+	return nil
+}
+
+func (g *Gorth) Not() error {
+	// flips the top of the stack
+	val1, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	// check types
+	if val1.Type != Bool {
+		return errors.New("ERROR: cannot perform NOT_OP on non boolean types")
+	}
+
+	if val1.Value.(bool) {
+		g.Push(StackElement{Type: Bool, Value: false})
+	} else {
+		g.Push(StackElement{Type: Bool, Value: true})
+	}
+	return nil
+}
+
+func (g *Gorth) Equal() error {
+	// checks if the top elements are equal
+	// equality checking is independent of type
+	// maybe bad language design lol
+	val1, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	val2, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	g.Push(StackElement{Type: Bool, Value: val1.Value == val2.Value})
+	return nil
+}
+
+func (g *Gorth) NotEqual() {
+	// checks if the top elements are not equal
+	// equality checking is independent of type
+	// maybe bad language design lol
+	g.Equal()
+	g.Not()
+}
+
+func (g *Gorth) EqualType() error {
+	// checks if the top elements are equal
+	// equality checking is dependent on type
+	// maybe bad language design lol
+	val1, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	val2, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	g.Push(StackElement{Type: Bool, Value: val1.Type == val2.Type})
+	return nil
+}
+
 func (g *Gorth) PrintStack() {
 	fmt.Printf("Program stack: %v\n", g.ExecStack)
 }
@@ -529,6 +662,33 @@ func (g *Gorth) ExecuteProgram(program []StackElement) error {
 				if err != nil {
 					return err
 				}
+			case AND_OP:
+				err := g.And()
+				if err != nil {
+					return err
+				}
+			case OR_OP:
+				err := g.Or()
+				if err != nil {
+					return err
+				}
+			case NOT_OP:
+				err := g.Not()
+				if err != nil {
+					return err
+				}
+			case EQUAL_OP:
+				err := g.Equal()
+				if err != nil {
+					return err
+				}
+			case NOT_EQUAL_OP:
+				g.NotEqual()
+			case EQUAL_TYP_OP:
+				err := g.EqualType()
+				if err != nil {
+					return err
+				}
 			}
 		} else {
 			err := g.Push(op)
@@ -591,9 +751,20 @@ func main() {
 		panic(err)
 	}
 
-	// get the other arguments
-	debugMode := args[1] == "-d"
-	strictMode := args[2] == "-s"
+	// get the other arguments even if there are not in the correct order
+	debugMode := false
+	strictMode := false
+
+	for _, arg := range args[1:] {
+		switch arg {
+		case "-d":
+			debugMode = true
+		case "-s":
+			strictMode = true
+		default:
+			panic(fmt.Sprintf("Invalid option: %s", arg))
+		}
+	}
 
 	// parse the program
 	program, err := ParseProgram(lines)
