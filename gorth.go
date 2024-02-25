@@ -1,9 +1,14 @@
 package main
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"math"
+	"os"
+	"regexp"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -31,17 +36,35 @@ const (
 	PRINT_OP
 )
 
-type ValueType int
+var operatorMap = map[string]Operation{
+	"+":     ADD_OP,
+	"-":     SUB_OP,
+	"*":     MUL_OP,
+	"/":     DIV_OP,
+	"%":     MOD_OP,
+	"^":     EXP_OP,
+	"++":    INC_OP,
+	"--":    DEC_OP,
+	"neg":   NEG_OP,
+	"swap":  SWAP_OP,
+	"dup":   DUP_OP,
+	"drop":  DROP_OP,
+	"dump":  DUMP_OP,
+	"print": PRINT_OP,
+}
+
+type Type int
 
 const (
-	Int ValueType = iota
+	Int Type = iota
 	String
 	Bool
+	Float
 	Operator
 )
 
 type StackElement struct {
-	Type  ValueType
+	Type  Type
 	Value interface{} // Use interface{} to support both int and string values
 }
 
@@ -57,6 +80,68 @@ func NewGorth(debugMode, strictMode bool) *Gorth {
 		DebugMode:  debugMode,
 		StrictMode: strictMode,
 	}
+}
+
+// ReadGorthFile reads a .gorth file and returns the contents as a slice of strings.
+func ReadGorthFile(filename string) ([]string, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var lines []string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	return lines, nil
+}
+
+// ParseProgram parses the lines of a .gorth file and converts them into a program of StackElements.
+func ParseProgram(lines []string) ([]StackElement, error) {
+	var program []StackElement
+	r := regexp.MustCompile(`"[^"]*"|\S+`)
+
+	for _, line := range lines {
+		parts := r.FindAllString(line, -1)
+		for _, part := range parts {
+			element, err := parseElement(strings.Trim(part, `"`))
+			if err != nil {
+				return nil, err
+			}
+			program = append(program, element)
+		}
+	}
+
+	return program, nil
+}
+
+// parseElement parses a string and converts it into a StackElement.
+func parseElement(s string) (StackElement, error) {
+	var element StackElement
+	if op, ok := operatorMap[s]; ok {
+		element.Type = Operator
+		element.Value = op
+	} else if val, err := strconv.Atoi(s); err == nil {
+		element.Type = Int
+		element.Value = val
+	} else if s == "true" || s == "false" {
+		element.Type = Bool
+		element.Value = s == "true"
+	} else if val, err := strconv.ParseFloat(s, 64); err == nil {
+		element.Type = Float
+		element.Value = val
+	} else {
+		element.Type = String
+		element.Value = s
+	}
+	return element, nil
 }
 
 func (g *Gorth) Push(val StackElement) error {
@@ -131,12 +216,22 @@ func (g *Gorth) Add() error {
 		return err
 	}
 	switch {
+	// integer addition
 	case val1.Type == Int && val2.Type == Int:
 		sum := val1.Value.(int) + val2.Value.(int)
 		g.Push(StackElement{Type: Int, Value: sum})
+	// string concatenation
 	case val1.Type == String && val2.Type == String:
 		concat := val2.Value.(string) + val1.Value.(string)
 		g.Push(StackElement{Type: String, Value: concat})
+	// float addition
+	case val1.Type == Float && val2.Type == Float:
+		sum := val1.Value.(float64) + val2.Value.(float64)
+		g.Push(StackElement{Type: Float, Value: sum})
+	// mixed type addition
+	case (val1.Type == Int && val2.Type == Float) || (val1.Type == Float && val2.Type == Int):
+		sum := val2.Value.(float64) + float64(val1.Value.(int))
+		g.Push(StackElement{Type: Float, Value: sum})
 	default:
 		return errors.New("ERROR: cannot perform ADD_OP on different types")
 	}
@@ -153,9 +248,14 @@ func (g *Gorth) Sub() error {
 		return err
 	}
 	switch {
+	// integer subtraction
 	case val1.Type == Int && val2.Type == Int:
 		sub := val2.Value.(int) - val1.Value.(int)
 		g.Push(StackElement{Type: Int, Value: sub})
+	// float subtraction
+	case val1.Type == Float && val2.Type == Float:
+		sub := val2.Value.(float64) - val1.Value.(float64)
+		g.Push(StackElement{Type: Float, Value: sub})
 	default:
 		return errors.New("ERROR: cannot perform SUB_OP on different types")
 	}
@@ -172,9 +272,11 @@ func (g *Gorth) Mul() error {
 		return err
 	}
 	switch {
+	// integer multiplication
 	case val1.Type == Int && val2.Type == Int:
 		mul := val1.Value.(int) * val2.Value.(int)
 		g.Push(StackElement{Type: Int, Value: mul})
+	// string multiplication
 	case val1.Type == String && val2.Type == Int:
 		str := val1.Value.(string)
 		num := val2.Value.(int)
@@ -183,6 +285,7 @@ func (g *Gorth) Mul() error {
 			concat += str
 		}
 		g.Push(StackElement{Type: String, Value: concat})
+	// string multiplication
 	case val1.Type == Int && val2.Type == String:
 		str := val2.Value.(string)
 		num := val1.Value.(int)
@@ -191,6 +294,14 @@ func (g *Gorth) Mul() error {
 			concat += str
 		}
 		g.Push(StackElement{Type: String, Value: concat})
+	// float multiplication
+	case val1.Type == Float && val2.Type == Float:
+		mul := val1.Value.(float64) * val2.Value.(float64)
+		g.Push(StackElement{Type: Float, Value: mul})
+	// mixed type multiplication
+	case (val1.Type == Int && val2.Type == Float) || (val1.Type == Float && val2.Type == Int):
+		mul := val2.Value.(float64) * float64(val1.Value.(int))
+		g.Push(StackElement{Type: Float, Value: mul})
 	default:
 		return errors.New("ERROR: cannot perform MUL_OP on different types")
 	}
@@ -207,9 +318,18 @@ func (g *Gorth) Div() error {
 		return err
 	}
 	switch {
+	// integer division
 	case val1.Type == Int && val2.Type == Int:
 		div := val2.Value.(int) / val1.Value.(int)
 		g.Push(StackElement{Type: Int, Value: div})
+	// float division
+	case val1.Type == Float && val2.Type == Float:
+		div := val2.Value.(float64) / val1.Value.(float64)
+		g.Push(StackElement{Type: Float, Value: div})
+	// mixed type division
+	case (val1.Type == Int && val2.Type == Float) || (val1.Type == Float && val2.Type == Int):
+		div := val2.Value.(float64) / float64(val1.Value.(int))
+		g.Push(StackElement{Type: Float, Value: div})
 	default:
 		return errors.New("ERROR: cannot perform DIV_OP on different types")
 	}
@@ -226,6 +346,7 @@ func (g *Gorth) Mod() error {
 		return err
 	}
 	switch {
+	// integer modulo
 	case val1.Type == Int && val2.Type == Int:
 		mod := val2.Value.(int) % val1.Value.(int)
 		g.Push(StackElement{Type: Int, Value: mod})
@@ -245,9 +366,18 @@ func (g *Gorth) Exp() error {
 		return err
 	}
 	switch {
+	// integer exponentiation
 	case val1.Type == Int && val2.Type == Int:
 		exp := int(math.Pow(float64(val2.Value.(int)), float64(val1.Value.(int))))
 		g.Push(StackElement{Type: Int, Value: exp})
+	// float exponentiation
+	case val1.Type == Float && val2.Type == Float:
+		exp := math.Pow(val2.Value.(float64), val1.Value.(float64))
+		g.Push(StackElement{Type: Float, Value: exp})
+	// mixed type exponentiation
+	case (val1.Type == Int && val2.Type == Float) || (val1.Type == Float && val2.Type == Int):
+		exp := math.Pow(float64(val2.Value.(int)), val1.Value.(float64))
+		g.Push(StackElement{Type: Float, Value: exp})
 	default:
 		return errors.New("ERROR: cannot perform EXP_OP on different types")
 	}
@@ -290,6 +420,8 @@ func (g *Gorth) Neg() error {
 	switch {
 	case val.Type == Int:
 		g.Push(StackElement{Type: Int, Value: -val.Value.(int)})
+	case val.Type == Float:
+		g.Push(StackElement{Type: Float, Value: -val.Value.(float64)})
 	default:
 		return errors.New("ERROR: cannot perform NEG_OP on different types")
 	}
@@ -419,32 +551,68 @@ func (g *Gorth) ExecuteProgram(program []StackElement) error {
 	return nil
 }
 
+func PrintUsage() {
+	fmt.Println("Usage: gorth <filename> [options]")
+	fmt.Println("  filename: the name of the .gorth file to execute")
+	fmt.Println("  options:")
+	fmt.Println("    -d: optional enable debug mode")
+	fmt.Println("    -s: optional enable strict mode")
+}
+
 func main() {
-	start := time.Now()
+	// get system arguments
+	args := os.Args[1:]
 
-	g := NewGorth(true, true)
-
-	program := []StackElement{
-		// perform this (3 * 2) + 1
-		{Value: 3, Type: Int},
-		{Value: 2, Type: Int},
-		{Value: MUL_OP, Type: Operator},
-		{Value: 1, Type: Int},
-		{Value: ADD_OP, Type: Operator},
-		{Value: DUMP_OP, Type: Operator},
-		// now print hello world
-		{Value: "hello ", Type: String},
-		{Value: "world", Type: String},
-		{Value: ADD_OP, Type: Operator},
-		{Value: PRINT_OP, Type: Operator},
-		{Value: DROP_OP, Type: Operator},
+	// check if there are no arguments
+	if len(args) == 0 {
+		PrintUsage()
+		return
 	}
+
+	// check if there are too many arguments
+	if len(args) > 3 {
+		panic("Too many arguments provided")
+	}
+
+	// check if the first argument is a .gorth file
+	if !strings.HasSuffix(args[0], ".gorth") {
+		panic(fmt.Sprintf("File %s is not a .gorth file", args[0]))
+	}
+
+	// check if the file exists
+	_, err := os.Stat(args[0])
+	if os.IsNotExist(err) {
+		panic(fmt.Sprintf("File %s does not exist", args[0]))
+	}
+
+	// read the file
+	lines, err := ReadGorthFile(args[0])
+	if err != nil {
+		panic(err)
+	}
+
+	// get the other arguments
+	debugMode := args[1] == "-d"
+	strictMode := args[2] == "-s"
+
+	// parse the program
+	program, err := ParseProgram(lines)
+
+	if err != nil {
+		panic(err)
+	}
+
+	// create a new gorth instance
+	g := NewGorth(debugMode, strictMode)
+
+	start := time.Now()
 
 	if g.DebugMode {
 		fmt.Printf("Program stack at start of execution\n\t%v\n", g.ExecStack)
 	}
 
-	err := g.ExecuteProgram(program)
+	// execute the program
+	err = g.ExecuteProgram(program)
 
 	end := time.Now()
 
