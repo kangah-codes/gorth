@@ -1,6 +1,7 @@
 package main
 
 import (
+	"reflect"
 	"testing"
 )
 
@@ -614,5 +615,68 @@ func TestEqualType(t *testing.T) {
 	err = g.EqualType()
 	if err == nil {
 		t.Errorf("Expected error in EqualType, but got nil")
+	}
+}
+func TestTokenize(t *testing.T) {
+	// Test case 1: Valid integer token
+	input1 := "123"
+	expected1 := []StackElement{{Type: Int, Value: 123}}
+	tokens1, err := Tokenize(input1)
+	if err != nil {
+		t.Errorf("Error in TestTokenize: %v", err)
+	}
+	if !reflect.DeepEqual(tokens1, expected1) {
+		t.Errorf("TestTokenize failed for input '%s'. Expected %v, got %v", input1, expected1, tokens1)
+	}
+
+	// Test case 2: Valid float token
+	input2 := "3.14"
+	expected2 := []StackElement{{Type: Float, Value: 3.14}}
+	tokens2, err := Tokenize(input2)
+	if err != nil {
+		t.Errorf("Error in TestTokenize: %v", err)
+	}
+	if !reflect.DeepEqual(tokens2, expected2) {
+		t.Errorf("TestTokenize failed for input '%s'. Expected %v, got %v", input2, expected2, tokens2)
+	}
+
+	// Test case 3: Valid string token
+	input3 := `"hello world"`
+	expected3 := []StackElement{{Type: String, Value: "hello world"}}
+	tokens3, err := Tokenize(input3)
+	if err != nil {
+		t.Errorf("Error in TestTokenize: %v", err)
+	}
+	if !reflect.DeepEqual(tokens3, expected3) {
+		t.Errorf("TestTokenize failed for input '%s'. Expected %v, got %v", input3, expected3, tokens3)
+	}
+
+	// Test case 4: Valid boolean token
+	input4 := "true"
+	expected4 := []StackElement{{Type: Bool, Value: true}}
+	tokens4, err := Tokenize(input4)
+	if err != nil {
+		t.Errorf("Error in TestTokenize: %v", err)
+	}
+	if !reflect.DeepEqual(tokens4, expected4) {
+		t.Errorf("TestTokenize failed for input '%s'. Expected %v, got %v", input4, expected4, tokens4)
+	}
+
+	// Test case 5: Valid operator token
+	input5 := "+"
+	expected5 := []StackElement{{Type: Operator, Value: ADD_OP}}
+	tokens5, err := Tokenize(input5)
+	if err != nil {
+		t.Errorf("Error in TestTokenize: %v", err)
+	}
+	if !reflect.DeepEqual(tokens5, expected5) {
+		t.Errorf("TestTokenize failed for input '%s'. Expected %v, got %v", input5, expected5, tokens5)
+	}
+
+	// Test case 6: Invalid token
+	input6 := "abc"
+	_, err = Tokenize(input6)
+	if err == nil {
+		t.Errorf("Expected error in TestTokenize for input '%s', but got nil", input6)
 	}
 }

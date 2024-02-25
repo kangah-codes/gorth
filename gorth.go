@@ -119,42 +119,6 @@ func ReadGorthFile(filename string) ([]string, error) {
 	return lines, nil
 }
 
-// ParseProgram parses the lines of a .gorth file and converts them into a program of StackElements.
-func ParseProgram(lines []string) ([]StackElement, error) {
-	// var program []StackElement
-	// r := regexp.MustCompile(`"[^"]*"|\S+`)
-
-	// for _, line := range lines {
-
-	// 	stack, err := Tokenize(line)
-
-	// 	if err != nil {
-	// 		return []StackElement{}, err
-	// 	}
-
-	// 	fmt.Println(stack, line)
-
-	// 	parts := r.FindAllString(line, -1)
-	// 	for _, part := range parts {
-	// 		element, err := parseElement(strings.Trim(part, `"`))
-	// 		if err != nil {
-	// 			return nil, err
-	// 		}
-	// 		program = append(program, element)
-	// 	}
-	// }
-
-	// return program, nil
-
-	tokens, err := Tokenize(strings.Join(lines, " "))
-
-	if err != nil {
-		return []StackElement{}, err
-	}
-
-	return tokens, nil
-}
-
 // Tokenizer
 func Tokenize(s string) ([]StackElement, error) {
 	var tokens []StackElement
@@ -179,7 +143,8 @@ func Tokenize(s string) ([]StackElement, error) {
 			val, _ := strconv.ParseFloat(part, 64)
 			tokens = append(tokens, StackElement{Type: Float, Value: val})
 		} else if stringRegex.MatchString(part) {
-			tokens = append(tokens, StackElement{Type: String, Value: part})
+			value := strings.Trim(part, `"`)
+			tokens = append(tokens, StackElement{Type: String, Value: value})
 		} else if boolRegex.MatchString(part) {
 			val := part == "true"
 			tokens = append(tokens, StackElement{Type: Bool, Value: val})
@@ -191,30 +156,6 @@ func Tokenize(s string) ([]StackElement, error) {
 	}
 
 	return tokens, nil
-}
-
-// parseElement parses a string and converts it into a StackElement.
-func parseElement(s string) (StackElement, error) {
-	var element StackElement
-	if op, ok := operatorMap[s]; ok {
-		element.Type = Operator
-		element.Value = op
-	} else if val, err := strconv.Atoi(s); err == nil {
-		element.Type = Int
-		element.Value = val
-	} else if s == "true" || s == "false" {
-		element.Type = Bool
-		element.Value = s == "true"
-	} else if val, err := strconv.ParseFloat(s, 64); err == nil {
-		element.Type = Float
-		element.Value = val
-	} else if s[0] == '"' && s[len(s)-1] == '"' {
-		element.Type = String
-		element.Value = s
-	} else {
-		return StackElement{}, errors.New("ERROR: invalid token")
-	}
-	return element, nil
 }
 
 func (g *Gorth) Push(val StackElement) error {
@@ -822,7 +763,7 @@ func main() {
 	}
 
 	// parse the program
-	program, err := ParseProgram(lines)
+	program, err := Tokenize(strings.Join(lines, " "))
 
 	if err != nil {
 		panic(err)
