@@ -11,13 +11,11 @@ This project is a stack-based programming language implemented in Go. It provide
 -   Basic stack operations: push, pop, swap, duplicate
 -   Arithmetic operations: add, subtract, multiply, divide
 -   Comparison and logical operations
--   Control flow: conditional branches and loops
--   Functions or subroutines
--   Basic input/output
--   Error handling
--   Memory management (optional)
--   Concurrency (optional)
--   Debugging tools
+-   Control flow: conditional branches and loops (Coming soon!)
+-   Functions or subroutines (Coming soon!)
+-   Basic input/output (Coming soon!)
+-   Error handling (Coming soon!)
+-   Memory management (Coming soon!)
 
 ## Usage
 
@@ -30,7 +28,7 @@ Run a gorth file
 
 In strict mode, all values on the stack have to be consumed by the end of the program, otherwise you get a big fat error. In non-strict mode, the stack can have values left over. Don't ask me why 🤷🏾‍♀️
 
-Gorth supports various built-in operators, including arithmetic operations (+, -, \*, /, %, ^), logical operations (&&, ||, !), and comparison operations (==, !=, ===). Working on adding >, <, >=, <=.
+Gorth supports various built-in operators, including arithmetic operations (+, -, \*, /, %, ^), logical operations (&&, ||, !), and comparison operations (==, !=, ===). Also (>=, <=, >, <.)
 
 ## Examples
 

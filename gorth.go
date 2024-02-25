@@ -42,6 +42,10 @@ const (
 	EQUAL_OP
 	NOT_EQUAL_OP
 	EQUAL_TYP_OP // equal types
+	GT_THAN_OP
+	LS_THAN_OP
+	GT_THAN_EQ_OP
+	LS_THAN_EQ_OP
 )
 
 var operatorMap = map[string]Operation{
@@ -65,6 +69,10 @@ var operatorMap = map[string]Operation{
 	"==":    EQUAL_OP,
 	"!=":    NOT_EQUAL_OP,
 	"===":   EQUAL_TYP_OP,
+	">":     GT_THAN_OP,
+	"<":     LS_THAN_OP,
+	">=":    GT_THAN_EQ_OP,
+	"<=":    LS_THAN_EQ_OP,
 }
 
 type Type int
@@ -128,7 +136,7 @@ func Tokenize(s string) ([]StackElement, error) {
 	floatRegex := regexp.MustCompile(`^-?\d+\.\d+$`)
 	stringRegex := regexp.MustCompile(`^".*"$`)
 	boolRegex := regexp.MustCompile(`^(true|false)$`)
-	operatorRegex := regexp.MustCompile(`^(\+|-|\*|/|%|\^|\+\+|--|neg|swap|dup|drop|dump|print|&&|\|\||!|==|!=|===)$`)
+	operatorRegex := regexp.MustCompile(`^(\+|-|\*|/|%|\^|\+\+|--|neg|swap|dup|drop|dump|print|&&|\|\||!|==|!=|===|>|<|>=|<=)$`)
 
 	// split the string into tokens
 	r := regexp.MustCompile(`"[^"]*"|\S+`)
@@ -580,6 +588,94 @@ func (g *Gorth) EqualType() error {
 	return nil
 }
 
+func (g *Gorth) GreaterThan() error {
+	val1, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	val2, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	switch {
+	case val1.Type == Int && val2.Type == Int:
+		g.Push(StackElement{Type: Bool, Value: val2.Value.(int) > val1.Value.(int)})
+	case val1.Type == Float && val2.Type == Float:
+		g.Push(StackElement{Type: Bool, Value: val2.Value.(float64) > val1.Value.(float64)})
+	default:
+		return errors.New("ERROR: cannot perform GT_THAN_OP on different types")
+	}
+	return nil
+}
+
+func (g *Gorth) LessThan() error {
+	val1, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	val2, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	switch {
+	case val1.Type == Int && val2.Type == Int:
+		g.Push(StackElement{Type: Bool, Value: val2.Value.(int) < val1.Value.(int)})
+	case val1.Type == Float && val2.Type == Float:
+		g.Push(StackElement{Type: Bool, Value: val2.Value.(float64) < val1.Value.(float64)})
+	default:
+		return errors.New("ERROR: cannot perform LS_THAN_OP on different types")
+	}
+	return nil
+}
+
+func (g *Gorth) GreaterThanEqual() error {
+	val1, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	val2, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	switch {
+	case val1.Type == Int && val2.Type == Int:
+		g.Push(StackElement{Type: Bool, Value: val2.Value.(int) >= val1.Value.(int)})
+	case val1.Type == Float && val2.Type == Float:
+		g.Push(StackElement{Type: Bool, Value: val2.Value.(float64) >= val1.Value.(float64)})
+	default:
+		return errors.New("ERROR: cannot perform GT_THAN_EQ_OP on different types")
+	}
+	return nil
+}
+
+func (g *Gorth) LessThanEqual() error {
+	val1, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	val2, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	switch {
+	case val1.Type == Int && val2.Type == Int:
+		g.Push(StackElement{Type: Bool, Value: val2.Value.(int) <= val1.Value.(int)})
+	case val1.Type == Float && val2.Type == Float:
+		g.Push(StackElement{Type: Bool, Value: val2.Value.(float64) <= val1.Value.(float64)})
+	default:
+		return errors.New("ERROR: cannot perform LS_THAN_EQ_OP on different types")
+	}
+	return nil
+}
+
 func (g *Gorth) PrintStack() {
 	fmt.Printf("Program stack: %v\n", g.ExecStack)
 }
@@ -682,6 +778,26 @@ func (g *Gorth) ExecuteProgram(program []StackElement) error {
 				g.NotEqual()
 			case EQUAL_TYP_OP:
 				err := g.EqualType()
+				if err != nil {
+					return err
+				}
+			case GT_THAN_OP:
+				err := g.GreaterThan()
+				if err != nil {
+					return err
+				}
+			case LS_THAN_OP:
+				err := g.LessThan()
+				if err != nil {
+					return err
+				}
+			case GT_THAN_EQ_OP:
+				err := g.GreaterThanEqual()
+				if err != nil {
+					return err
+				}
+			case LS_THAN_EQ_OP:
+				err := g.LessThanEqual()
 				if err != nil {
 					return err
 				}

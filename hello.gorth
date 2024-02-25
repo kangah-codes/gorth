@@ -1,2 +1,4 @@
-3 3 + dump
-"Hello World" print
+"Hello World" drop
+
+3 2 * 9 ^ 90 === dump
+
