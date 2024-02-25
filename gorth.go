@@ -122,6 +122,28 @@ func (g *Gorth) Drop() {
 	fmt.Println(val.Value)
 }
 
+// Peek operation which returns the last element on the stack
+func (g *Gorth) Peek() (StackElement, error) {
+	if len(g.ProgramStack) < 1 {
+		return StackElement{}, errors.New("ERROR: Stack is empty, cannot peek from stack")
+	}
+
+	// get the last element from the stack
+	val := g.ProgramStack[len(g.ProgramStack)-1]
+
+	return val, nil
+}
+
+// Function to print the top element of the stack
+func (g *Gorth) Print() {
+	val, err := g.Peek()
+	if err != nil {
+		fmt.Println(err.Error())
+	}
+
+	fmt.Println(val.Value)
+}
+
 func (g *Gorth) Sim() error {
 	// check if program length exceeds max stack size
 	if len(g.ProgramStack) > MAX_STACK_SIZE {
