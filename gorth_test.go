@@ -7,7 +7,7 @@ import (
 func TestPushOperation(t *testing.T) {
 	g := NewProgramStack(false, false)
 
-	err := g.Push(StackElement{Value: 10, IsProgramOp: false})
+	err := g.Push(StackElement{Value: 10, ValueType: IntType})
 	if err != nil {
 		t.Errorf("Error pushing onto stack: %v", err)
 	}
@@ -24,10 +24,11 @@ func TestPushOperation(t *testing.T) {
 func TestAddOperation(t *testing.T) {
 	g := NewProgramStack(false, false)
 
-	g.Push(StackElement{Value: 5, IsProgramOp: false})
-	g.Push(StackElement{Value: 10, IsProgramOp: false})
+	g.Push(StackElement{Value: 5, ValueType: IntType})
+	g.Push(StackElement{Value: 10, ValueType: IntType})
+	g.Push(StackElement{Value: ADD_OP, ValueType: OpType})
 
-	err := g.Sim([]StackElement{{Value: ADD_OP, IsProgramOp: true}})
+	err := g.Sim()
 	if err != nil {
 		t.Errorf("Error performing addition operation: %v", err)
 	}
@@ -41,10 +42,11 @@ func TestAddOperation(t *testing.T) {
 func TestSubOperation(t *testing.T) {
 	g := NewProgramStack(false, false)
 
-	g.Push(StackElement{Value: 10, IsProgramOp: false})
-	g.Push(StackElement{Value: 5, IsProgramOp: false})
+	g.Push(StackElement{Value: 10, ValueType: IntType})
+	g.Push(StackElement{Value: 5, ValueType: IntType})
+	g.Push(StackElement{Value: SUB_OP, ValueType: OpType})
 
-	err := g.Sim([]StackElement{{Value: SUB_OP, IsProgramOp: true}})
+	err := g.Sim()
 	if err != nil {
 		t.Errorf("Error performing subtraction operation: %v", err)
 	}
@@ -58,10 +60,11 @@ func TestSubOperation(t *testing.T) {
 func TestMulOperation(t *testing.T) {
 	g := NewProgramStack(false, false)
 
-	g.Push(StackElement{Value: 5, IsProgramOp: false})
-	g.Push(StackElement{Value: 10, IsProgramOp: false})
+	g.Push(StackElement{Value: 5, ValueType: IntType})
+	g.Push(StackElement{Value: 10, ValueType: IntType})
+	g.Push(StackElement{Value: MUL_OP, ValueType: OpType})
 
-	err := g.Sim([]StackElement{{Value: MUL_OP, IsProgramOp: true}})
+	err := g.Sim()
 	if err != nil {
 		t.Errorf("Error performing multiplication operation: %v", err)
 	}
@@ -75,10 +78,11 @@ func TestMulOperation(t *testing.T) {
 func TestDivOperation(t *testing.T) {
 	g := NewProgramStack(false, false)
 
-	g.Push(StackElement{Value: 10, IsProgramOp: false})
-	g.Push(StackElement{Value: 2, IsProgramOp: false})
+	g.Push(StackElement{Value: 10, ValueType: IntType})
+	g.Push(StackElement{Value: 2, ValueType: IntType})
+	g.Push(StackElement{Value: DIV_OP, ValueType: OpType})
 
-	err := g.Sim([]StackElement{{Value: DIV_OP, IsProgramOp: true}})
+	err := g.Sim()
 	if err != nil {
 		t.Errorf("Error performing division operation: %v", err)
 	}
@@ -92,10 +96,11 @@ func TestDivOperation(t *testing.T) {
 func TestModOperation(t *testing.T) {
 	g := NewProgramStack(false, false)
 
-	g.Push(StackElement{Value: 10, IsProgramOp: false})
-	g.Push(StackElement{Value: 3, IsProgramOp: false})
+	g.Push(StackElement{Value: 10, ValueType: IntType})
+	g.Push(StackElement{Value: 3, ValueType: IntType})
+	g.Push(StackElement{Value: MOD_OP, ValueType: OpType})
 
-	err := g.Sim([]StackElement{{Value: MOD_OP, IsProgramOp: true}})
+	err := g.Sim()
 	if err != nil {
 		t.Errorf("Error performing modulus operation: %v", err)
 	}
@@ -109,10 +114,11 @@ func TestModOperation(t *testing.T) {
 func TestExpOperation(t *testing.T) {
 	g := NewProgramStack(false, false)
 
-	g.Push(StackElement{Value: 2, IsProgramOp: false})
-	g.Push(StackElement{Value: 3, IsProgramOp: false})
+	g.Push(StackElement{Value: 2, ValueType: IntType})
+	g.Push(StackElement{Value: 3, ValueType: IntType})
+	g.Push(StackElement{Value: EXP_OP, ValueType: OpType})
 
-	err := g.Sim([]StackElement{{Value: EXP_OP, IsProgramOp: true}})
+	err := g.Sim()
 	if err != nil {
 		t.Errorf("Error performing exponentiation operation: %v", err)
 	}
@@ -126,9 +132,10 @@ func TestExpOperation(t *testing.T) {
 func TestIncOperation(t *testing.T) {
 	g := NewProgramStack(false, false)
 
-	g.Push(StackElement{Value: 5, IsProgramOp: false})
+	g.Push(StackElement{Value: 5, ValueType: IntType})
+	g.Push(StackElement{Value: INC_OP, ValueType: OpType})
 
-	err := g.Sim([]StackElement{{Value: INC_OP, IsProgramOp: true}})
+	err := g.Sim()
 	if err != nil {
 		t.Errorf("Error performing increment operation: %v", err)
 	}
@@ -142,9 +149,10 @@ func TestIncOperation(t *testing.T) {
 func TestDecOperation(t *testing.T) {
 	g := NewProgramStack(false, false)
 
-	g.Push(StackElement{Value: 5, IsProgramOp: false})
+	g.Push(StackElement{Value: 5, ValueType: IntType})
+	g.Push(StackElement{Value: DEC_OP, ValueType: OpType})
 
-	err := g.Sim([]StackElement{{Value: DEC_OP, IsProgramOp: true}})
+	err := g.Sim()
 	if err != nil {
 		t.Errorf("Error performing decrement operation: %v", err)
 	}
@@ -158,9 +166,10 @@ func TestDecOperation(t *testing.T) {
 func TestNegOperation(t *testing.T) {
 	g := NewProgramStack(false, false)
 
-	g.Push(StackElement{Value: 5, IsProgramOp: false})
+	g.Push(StackElement{Value: 5, ValueType: IntType})
+	g.Push(StackElement{Value: NEG_OP, ValueType: OpType})
 
-	err := g.Sim([]StackElement{{Value: NEG_OP, IsProgramOp: true}})
+	err := g.Sim()
 	if err != nil {
 		t.Errorf("Error performing negation operation: %v", err)
 	}
@@ -174,9 +183,10 @@ func TestNegOperation(t *testing.T) {
 func TestDupOperation(t *testing.T) {
 	g := NewProgramStack(false, false)
 
-	g.Push(StackElement{Value: 5, IsProgramOp: false})
+	g.Push(StackElement{Value: 5, ValueType: IntType})
+	g.Push(StackElement{Value: DUP_OP, ValueType: OpType})
 
-	err := g.Sim([]StackElement{{Value: DUP_OP, IsProgramOp: true}})
+	err := g.Sim()
 	if err != nil {
 		t.Errorf("Error performing duplicate operation: %v", err)
 	}
@@ -195,10 +205,11 @@ func TestDupOperation(t *testing.T) {
 func TestSwpOperation(t *testing.T) {
 	g := NewProgramStack(false, false)
 
-	g.Push(StackElement{Value: 5, IsProgramOp: false})
-	g.Push(StackElement{Value: 10, IsProgramOp: false})
+	g.Push(StackElement{Value: 5, ValueType: IntType})
+	g.Push(StackElement{Value: 10, ValueType: IntType})
+	g.Push(StackElement{Value: SWP_OP, ValueType: OpType})
 
-	err := g.Sim([]StackElement{{Value: SWP_OP, IsProgramOp: true}})
+	err := g.Sim()
 	if err != nil {
 		t.Errorf("Error performing swap operation: %v", err)
 	}
@@ -217,7 +228,7 @@ func TestSwpOperation(t *testing.T) {
 func TestDmpOperation(t *testing.T) {
 	g := NewProgramStack(false, false)
 
-	g.Push(StackElement{Value: 10, IsProgramOp: false})
+	g.Push(StackElement{Value: 10, ValueType: IntType})
 
-	g.DumpStack()
+	g.Drop()
 }
