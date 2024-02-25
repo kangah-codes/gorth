@@ -75,6 +75,8 @@ const (
 	Bool
 	Float
 	Operator
+	Identifier
+	SpecialSymbol
 )
 
 type StackElement struct {
@@ -119,21 +121,76 @@ func ReadGorthFile(filename string) ([]string, error) {
 
 // ParseProgram parses the lines of a .gorth file and converts them into a program of StackElements.
 func ParseProgram(lines []string) ([]StackElement, error) {
-	var program []StackElement
-	r := regexp.MustCompile(`"[^"]*"|\S+`)
+	// var program []StackElement
+	// r := regexp.MustCompile(`"[^"]*"|\S+`)
 
-	for _, line := range lines {
-		parts := r.FindAllString(line, -1)
-		for _, part := range parts {
-			element, err := parseElement(strings.Trim(part, `"`))
-			if err != nil {
-				return nil, err
-			}
-			program = append(program, element)
+	// for _, line := range lines {
+
+	// 	stack, err := Tokenize(line)
+
+	// 	if err != nil {
+	// 		return []StackElement{}, err
+	// 	}
+
+	// 	fmt.Println(stack, line)
+
+	// 	parts := r.FindAllString(line, -1)
+	// 	for _, part := range parts {
+	// 		element, err := parseElement(strings.Trim(part, `"`))
+	// 		if err != nil {
+	// 			return nil, err
+	// 		}
+	// 		program = append(program, element)
+	// 	}
+	// }
+
+	// return program, nil
+
+	tokens, err := Tokenize(strings.Join(lines, " "))
+
+	if err != nil {
+		return []StackElement{}, err
+	}
+
+	return tokens, nil
+}
+
+// Tokenizer
+func Tokenize(s string) ([]StackElement, error) {
+	var tokens []StackElement
+
+	// define regex patterns
+	integerRegex := regexp.MustCompile(`^-?\d+$`)
+	floatRegex := regexp.MustCompile(`^-?\d+\.\d+$`)
+	stringRegex := regexp.MustCompile(`^".*"$`)
+	boolRegex := regexp.MustCompile(`^(true|false)$`)
+	operatorRegex := regexp.MustCompile(`^(\+|-|\*|/|%|\^|\+\+|--|neg|swap|dup|drop|dump|print|&&|\|\||!|==|!=|===)$`)
+
+	// split the string into tokens
+	r := regexp.MustCompile(`"[^"]*"|\S+`)
+	parts := r.FindAllString(s, -1)
+
+	// parse each token
+	for _, part := range parts {
+		if integerRegex.MatchString(part) {
+			val, _ := strconv.Atoi(part)
+			tokens = append(tokens, StackElement{Type: Int, Value: val})
+		} else if floatRegex.MatchString(part) {
+			val, _ := strconv.ParseFloat(part, 64)
+			tokens = append(tokens, StackElement{Type: Float, Value: val})
+		} else if stringRegex.MatchString(part) {
+			tokens = append(tokens, StackElement{Type: String, Value: part})
+		} else if boolRegex.MatchString(part) {
+			val := part == "true"
+			tokens = append(tokens, StackElement{Type: Bool, Value: val})
+		} else if operatorRegex.MatchString(part) {
+			tokens = append(tokens, StackElement{Type: Operator, Value: operatorMap[part]})
+		} else {
+			return nil, errors.New("ERROR: invalid token")
 		}
 	}
 
-	return program, nil
+	return tokens, nil
 }
 
 // parseElement parses a string and converts it into a StackElement.
@@ -316,8 +373,7 @@ func (g *Gorth) Mul() error {
 		g.Push(StackElement{Type: Float, Value: mul})
 	// mixed type multiplication
 	case (val1.Type == Int && val2.Type == Float) || (val1.Type == Float && val2.Type == Int):
-		mul := val2.Value.(float64) * float64(val1.Value.(int))
-		g.Push(StackElement{Type: Float, Value: mul})
+		return errors.New("ERROR: cannot perform MUL_OP on different types")
 	default:
 		return errors.New("ERROR: cannot perform MUL_OP on different types")
 	}
@@ -344,8 +400,7 @@ func (g *Gorth) Div() error {
 		g.Push(StackElement{Type: Float, Value: div})
 	// mixed type division
 	case (val1.Type == Int && val2.Type == Float) || (val1.Type == Float && val2.Type == Int):
-		div := val2.Value.(float64) / float64(val1.Value.(int))
-		g.Push(StackElement{Type: Float, Value: div})
+		return errors.New("ERROR: cannot perform DIV_OP on different types")
 	default:
 		return errors.New("ERROR: cannot perform DIV_OP on different types")
 	}
