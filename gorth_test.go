@@ -21,11 +21,13 @@ func TestPushOperation(t *testing.T) {
 func TestAddOperation(t *testing.T) {
 	g := NewGorth(false, false)
 
-	g.Push(StackElement{Value: 5, Type: Int})
-	g.Push(StackElement{Value: 10, Type: Int})
-	g.Push(StackElement{Value: ADD_OP, Type: Operator})
-
-	err := g.ExecuteProgram()
+	err := g.ExecuteProgram(
+		[]StackElement{
+			{Value: 5, Type: Int},
+			{Value: 10, Type: Int},
+			{Value: ADD_OP, Type: Operator},
+		},
+	)
 	if err != nil {
 		t.Errorf("Error performing addition operation: %v", err)
 	}
@@ -39,11 +41,13 @@ func TestAddOperation(t *testing.T) {
 func TestSubOperation(t *testing.T) {
 	g := NewGorth(false, false)
 
-	g.Push(StackElement{Value: 10, Type: Int})
-	g.Push(StackElement{Value: 5, Type: Int})
-	g.Push(StackElement{Value: SUB_OP, Type: Operator})
-
-	err := g.ExecuteProgram()
+	err := g.ExecuteProgram(
+		[]StackElement{
+			{Value: 10, Type: Int},
+			{Value: 5, Type: Int},
+			{Value: SUB_OP, Type: Operator},
+		},
+	)
 	if err != nil {
 		t.Errorf("Error performing subtraction operation: %v", err)
 	}
@@ -57,11 +61,13 @@ func TestSubOperation(t *testing.T) {
 func TestMulOperation(t *testing.T) {
 	g := NewGorth(false, false)
 
-	g.Push(StackElement{Value: 5, Type: Int})
-	g.Push(StackElement{Value: 10, Type: Int})
-	g.Push(StackElement{Value: MUL_OP, Type: Operator})
-
-	err := g.ExecuteProgram()
+	err := g.ExecuteProgram(
+		[]StackElement{
+			{Value: 5, Type: Int},
+			{Value: 10, Type: Int},
+			{Value: MUL_OP, Type: Operator},
+		},
+	)
 	if err != nil {
 		t.Errorf("Error performing multiplication operation: %v", err)
 	}
@@ -75,11 +81,13 @@ func TestMulOperation(t *testing.T) {
 func TestDivOperation(t *testing.T) {
 	g := NewGorth(false, false)
 
-	g.Push(StackElement{Value: 10, Type: Int})
-	g.Push(StackElement{Value: 2, Type: Int})
-	g.Push(StackElement{Value: DIV_OP, Type: Operator})
-
-	err := g.ExecuteProgram()
+	err := g.ExecuteProgram(
+		[]StackElement{
+			{Value: 10, Type: Int},
+			{Value: 2, Type: Int},
+			{Value: DIV_OP, Type: Operator},
+		},
+	)
 	if err != nil {
 		t.Errorf("Error performing division operation: %v", err)
 	}
@@ -93,11 +101,13 @@ func TestDivOperation(t *testing.T) {
 func TestModOperation(t *testing.T) {
 	g := NewGorth(false, false)
 
-	g.Push(StackElement{Value: 10, Type: Int})
-	g.Push(StackElement{Value: 3, Type: Int})
-	g.Push(StackElement{Value: MOD_OP, Type: Operator})
-
-	err := g.ExecuteProgram()
+	err := g.ExecuteProgram(
+		[]StackElement{
+			{Value: 10, Type: Int},
+			{Value: 3, Type: Int},
+			{Value: MOD_OP, Type: Operator},
+		},
+	)
 	if err != nil {
 		t.Errorf("Error performing modulus operation: %v", err)
 	}
@@ -111,13 +121,13 @@ func TestModOperation(t *testing.T) {
 func TestExpOperation(t *testing.T) {
 	g := NewGorth(false, false)
 
-	g.Push(StackElement{Value: 2, Type: Int})
-	g.Push(StackElement{Value: 3, Type: Int})
-	g.Push(StackElement{Value: EXP_OP, Type: Operator})
-
-	g.PrintStack()
-
-	err := g.ExecuteProgram()
+	err := g.ExecuteProgram(
+		[]StackElement{
+			{Value: 2, Type: Int},
+			{Value: 3, Type: Int},
+			{Value: EXP_OP, Type: Operator},
+		},
+	)
 	if err != nil {
 		t.Errorf("Error performing exponentiation operation: %v", err)
 	}
@@ -131,10 +141,12 @@ func TestExpOperation(t *testing.T) {
 func TestIncOperation(t *testing.T) {
 	g := NewGorth(false, false)
 
-	g.Push(StackElement{Value: 5, Type: Int})
-	g.Push(StackElement{Value: INC_OP, Type: Operator})
-
-	err := g.ExecuteProgram()
+	err := g.ExecuteProgram(
+		[]StackElement{
+			{Value: 5, Type: Int},
+			{Value: INC_OP, Type: Operator},
+		},
+	)
 	if err != nil {
 		t.Errorf("Error performing increment operation: %v", err)
 	}
@@ -148,10 +160,12 @@ func TestIncOperation(t *testing.T) {
 func TestDecOperation(t *testing.T) {
 	g := NewGorth(false, false)
 
-	g.Push(StackElement{Value: 5, Type: Int})
-	g.Push(StackElement{Value: DEC_OP, Type: Operator})
-
-	err := g.ExecuteProgram()
+	err := g.ExecuteProgram(
+		[]StackElement{
+			{Value: 5, Type: Int},
+			{Value: DEC_OP, Type: Operator},
+		},
+	)
 	if err != nil {
 		t.Errorf("Error performing decrement operation: %v", err)
 	}
@@ -165,10 +179,12 @@ func TestDecOperation(t *testing.T) {
 func TestNegOperation(t *testing.T) {
 	g := NewGorth(false, false)
 
-	g.Push(StackElement{Value: 5, Type: Int})
-	g.Push(StackElement{Value: NEG_OP, Type: Operator})
-
-	err := g.ExecuteProgram()
+	err := g.ExecuteProgram(
+		[]StackElement{
+			{Value: 5, Type: Int},
+			{Value: NEG_OP, Type: Operator},
+		},
+	)
 	if err != nil {
 		t.Errorf("Error performing negation operation: %v", err)
 	}
@@ -182,10 +198,12 @@ func TestNegOperation(t *testing.T) {
 func TestDupOperation(t *testing.T) {
 	g := NewGorth(false, false)
 
-	g.Push(StackElement{Value: 5, Type: Int})
-	g.Push(StackElement{Value: DUP_OP, Type: Operator})
-
-	err := g.ExecuteProgram()
+	err := g.ExecuteProgram(
+		[]StackElement{
+			{Value: 5, Type: Int},
+			{Value: DUP_OP, Type: Operator},
+		},
+	)
 	if err != nil {
 		t.Errorf("Error performing duplicate operation: %v", err)
 	}
@@ -204,11 +222,13 @@ func TestDupOperation(t *testing.T) {
 func TestSwpOperation(t *testing.T) {
 	g := NewGorth(false, false)
 
-	g.Push(StackElement{Value: 5, Type: Int})
-	g.Push(StackElement{Value: 10, Type: Int})
-	g.Push(StackElement{Value: SWAP_OP, Type: Operator})
-
-	err := g.ExecuteProgram()
+	err := g.ExecuteProgram(
+		[]StackElement{
+			{Value: 5, Type: Int},
+			{Value: 10, Type: Int},
+			{Value: SWAP_OP, Type: Operator},
+		},
+	)
 	if err != nil {
 		t.Errorf("Error performing swap operation: %v", err)
 	}
@@ -231,7 +251,7 @@ func TestDmpOperation(t *testing.T) {
 
 	g.Drop()
 
-	if len(g.ProgramStack) != 0 {
-		t.Errorf("Error in drop operation. Expected stack to be empty, got %v", g.ProgramStack)
+	if len(g.ExecStack) != 0 {
+		t.Errorf("Error in drop operation. Expected stack to be empty, got %v", g.ExecStack)
 	}
 }
