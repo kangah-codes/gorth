@@ -1,0 +1,26 @@
+# Simple addition
+3 2 + print dump
+
+# Simple subtraction
+3 2 - print dump
+
+# Simple multiplication
+3 2 * print dump
+
+# Simple division
+3 2 / print dump
+
+# Simple modulo
+3 2 % print dump
+
+# Simple exponentiation
+3 2 ^ print dump
+
+# Simple increment
+3 ++ print dump
+
+# Simple decrement
+3 -- print dump
+
+# Simple negation flip 3 -> -3
+3 ! print dump
