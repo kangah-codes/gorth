@@ -601,9 +601,13 @@ func (g *Gorth) GreaterThan() error {
 
 	switch {
 	case val1.Type == Int && val2.Type == Int:
-		g.Push(StackElement{Type: Bool, Value: val2.Value.(int) > val1.Value.(int)})
+		g.Push(StackElement{Type: Bool, Value: val2.Value.(int) > val1.Value.(int)}) // Comparing val2 to val1
 	case val1.Type == Float && val2.Type == Float:
-		g.Push(StackElement{Type: Bool, Value: val2.Value.(float64) > val1.Value.(float64)})
+		g.Push(StackElement{Type: Bool, Value: val2.Value.(float64) > val1.Value.(float64)}) // Comparing val2 to val1
+	case val1.Type == Int && val2.Type == Float:
+		g.Push(StackElement{Type: Bool, Value: val2.Value.(float64) > float64(val1.Value.(int))}) // Comparing val2 to val1
+	case val1.Type == Float && val2.Type == Int:
+		g.Push(StackElement{Type: Bool, Value: float64(val2.Value.(int)) > val1.Value.(float64)}) // Comparing val2 to val1
 	default:
 		return errors.New("ERROR: cannot perform GT_THAN_OP on different types")
 	}
@@ -626,6 +630,10 @@ func (g *Gorth) LessThan() error {
 		g.Push(StackElement{Type: Bool, Value: val2.Value.(int) < val1.Value.(int)})
 	case val1.Type == Float && val2.Type == Float:
 		g.Push(StackElement{Type: Bool, Value: val2.Value.(float64) < val1.Value.(float64)})
+	case val1.Type == Int && val2.Type == Float:
+		g.Push(StackElement{Type: Bool, Value: val2.Value.(float64) < float64(val1.Value.(int))})
+	case val1.Type == Float && val2.Type == Int:
+		g.Push(StackElement{Type: Bool, Value: float64(val2.Value.(int)) < val1.Value.(float64)})
 	default:
 		return errors.New("ERROR: cannot perform LS_THAN_OP on different types")
 	}
@@ -648,6 +656,10 @@ func (g *Gorth) GreaterThanEqual() error {
 		g.Push(StackElement{Type: Bool, Value: val2.Value.(int) >= val1.Value.(int)})
 	case val1.Type == Float && val2.Type == Float:
 		g.Push(StackElement{Type: Bool, Value: val2.Value.(float64) >= val1.Value.(float64)})
+	case val1.Type == Int && val2.Type == Float:
+		g.Push(StackElement{Type: Bool, Value: val2.Value.(float64) >= float64(val1.Value.(int))})
+	case val1.Type == Float && val2.Type == Int:
+		g.Push(StackElement{Type: Bool, Value: float64(val2.Value.(int)) >= val1.Value.(float64)})
 	default:
 		return errors.New("ERROR: cannot perform GT_THAN_EQ_OP on different types")
 	}
@@ -670,6 +682,10 @@ func (g *Gorth) LessThanEqual() error {
 		g.Push(StackElement{Type: Bool, Value: val2.Value.(int) <= val1.Value.(int)})
 	case val1.Type == Float && val2.Type == Float:
 		g.Push(StackElement{Type: Bool, Value: val2.Value.(float64) <= val1.Value.(float64)})
+	case val1.Type == Int && val2.Type == Float:
+		g.Push(StackElement{Type: Bool, Value: val2.Value.(float64) <= float64(val1.Value.(int))})
+	case val1.Type == Float && val2.Type == Int:
+		g.Push(StackElement{Type: Bool, Value: float64(val2.Value.(int)) <= val1.Value.(float64)})
 	default:
 		return errors.New("ERROR: cannot perform LS_THAN_EQ_OP on different types")
 	}

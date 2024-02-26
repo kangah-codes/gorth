@@ -24,8 +24,8 @@ func TestAddOperation(t *testing.T) {
 
 	err := g.ExecuteProgram(
 		[]StackElement{
-			{Value: 5, Type: Int},
 			{Value: 10, Type: Int},
+			{Value: 5, Type: Int},
 			{Value: ADD_OP, Type: Operator},
 		},
 	)
@@ -678,5 +678,288 @@ func TestTokenize(t *testing.T) {
 	_, err = Tokenize(input6)
 	if err == nil {
 		t.Errorf("Expected error in TestTokenize for input '%s', but got nil", input6)
+	}
+}
+func TestGreaterThanOperation(t *testing.T) {
+	g := NewGorth(false, false)
+
+	// Test case 1: Int values, val2 > val1
+	err := g.ExecuteProgram(
+		[]StackElement{
+			{Value: 5, Type: Int},
+			{Value: 10, Type: Int},
+			{Value: GT_THAN_OP, Type: Operator},
+		},
+	)
+	if err != nil {
+		t.Errorf("Error performing GreaterThan operation: %v", err)
+	}
+
+	val, err := g.Pop()
+	if err != nil || val.Value != false {
+		t.Errorf("Error in GreaterThan operation. Expected result false, got %v", val.Value)
+	}
+
+	// Test case 2: Int values, val2 < val1
+	err = g.ExecuteProgram(
+		[]StackElement{
+			{Value: 5, Type: Int},
+			{Value: 10, Type: Int},
+			{Value: GT_THAN_OP, Type: Operator},
+		},
+	)
+	if err != nil {
+		t.Errorf("Error performing GreaterThan operation: %v", err)
+	}
+
+	val, err = g.Pop()
+	if err != nil || val.Value != false {
+		t.Errorf("Error in GreaterThan operation. Expected result false, got %v", val.Value)
+	}
+
+	// Test case 3: Float values, val2 > val1
+	err = g.ExecuteProgram(
+		[]StackElement{
+			{Value: 10.5, Type: Float},
+			{Value: 5.5, Type: Float},
+			{Value: GT_THAN_OP, Type: Operator},
+		},
+	)
+	if err != nil {
+		t.Errorf("Error performing GreaterThan operation: %v", err)
+	}
+
+	val, err = g.Pop()
+	if err != nil || val.Value != true {
+		t.Errorf("Error in GreaterThan operation. Expected result true, got %v", val.Value)
+	}
+
+	// Test case 4: Float values, val2 < val1
+	err = g.ExecuteProgram(
+		[]StackElement{
+			{Value: 5.5, Type: Float},
+			{Value: 10.5, Type: Float},
+			{Value: GT_THAN_OP, Type: Operator},
+		},
+	)
+	if err != nil {
+		t.Errorf("Error performing GreaterThan operation: %v", err)
+	}
+
+	val, err = g.Pop()
+	if err != nil || val.Value != false {
+		t.Errorf("Error in GreaterThan operation. Expected result false, got %v", val.Value)
+	}
+
+	// Test case 5: Different types
+	err = g.ExecuteProgram(
+		[]StackElement{
+			{Value: 5, Type: Int},
+			{Value: 5.5, Type: Float},
+			{Value: GT_THAN_OP, Type: Operator},
+		},
+	)
+	if err != nil {
+		t.Errorf("Error performing GreaterThan operation: %v", err)
+	}
+
+	val, err = g.Pop()
+	if err != nil || val.Value != false {
+		t.Errorf("Error in GreaterThan operation. Expected result false, got %v", val.Value)
+	}
+}
+func TestLessThanOperation(t *testing.T) {
+	g := NewGorth(false, false)
+
+	// Test case 1: Int values
+	err := g.ExecuteProgram(
+		[]StackElement{
+			{Value: 10, Type: Int},
+			{Value: 5, Type: Int},
+			{Value: LS_THAN_OP, Type: Operator},
+		},
+	)
+	if err != nil {
+		t.Errorf("Error performing LessThan operation: %v", err)
+	}
+
+	val, err := g.Pop()
+	if err != nil || val.Value != false {
+		t.Errorf("Error in LessThan operation. Expected result false, got %v", val.Value)
+	}
+
+	// Test case 2: Float values
+	err = g.ExecuteProgram(
+		[]StackElement{
+			{Value: 3.14, Type: Float},
+			{Value: 2.71, Type: Float},
+			{Value: LS_THAN_OP, Type: Operator},
+		},
+	)
+	if err != nil {
+		t.Errorf("Error performing LessThan operation: %v", err)
+	}
+
+	val, err = g.Pop()
+	if err != nil || val.Value != false {
+		t.Errorf("Error in LessThan operation. Expected result false, got %v", val.Value)
+	}
+
+	// Test case 3: Different types
+	err = g.ExecuteProgram(
+		[]StackElement{
+			{Value: 3.14, Type: Float},
+			{Value: 5, Type: Int},
+			{Value: LS_THAN_OP, Type: Operator},
+		},
+	)
+	if err != nil {
+		t.Errorf("Error performing LessThan operation: %v", err)
+	}
+	val, err = g.Pop()
+	if err != nil || val.Value != true {
+		t.Errorf("Error in LessThan operation. Expected result true, got %v", val.Value)
+	}
+}
+func TestGreaterThanEqualOperation(t *testing.T) {
+	g := NewGorth(false, false)
+
+	// Test case 1: Integers
+	err := g.ExecuteProgram(
+		[]StackElement{
+			{Value: 5, Type: Int},
+			{Value: 10, Type: Int},
+			{Value: GT_THAN_EQ_OP, Type: Operator},
+		},
+	)
+	if err != nil {
+		t.Errorf("Error performing GreaterThanEqual operation: %v", err)
+	}
+
+	val, err := g.Pop()
+	if err != nil || val.Value != false {
+		t.Errorf("Error in GreaterThanEqual operation. Expected result false, got %v", val.Value)
+	}
+
+	// Test case 2: Floats
+	err = g.ExecuteProgram(
+		[]StackElement{
+			{Value: 10.5, Type: Float},
+			{Value: 5.5, Type: Float},
+			{Value: GT_THAN_EQ_OP, Type: Operator},
+		},
+	)
+	if err != nil {
+		t.Errorf("Error performing GreaterThanEqual operation: %v", err)
+	}
+
+	val, err = g.Pop()
+	if err != nil || val.Value != true {
+		t.Errorf("Error in GreaterThanEqual operation. Expected result true, got %v", val.Value)
+	}
+
+	// Test case 3: Mixed types
+	err = g.ExecuteProgram(
+		[]StackElement{
+			{Value: 5, Type: Int},
+			{Value: 5.5, Type: Float},
+			{Value: GT_THAN_EQ_OP, Type: Operator},
+		},
+	)
+	if err != nil {
+		t.Errorf("Error performing GreaterThanEqual operation: %v", err)
+	}
+
+	val, err = g.Pop()
+	if err != nil || val.Value != false {
+		t.Errorf("Error in GreaterThanEqual operation. Expected result false, got %v", val.Value)
+	}
+}
+func TestLessThanEqualOperation(t *testing.T) {
+	g := NewGorth(false, false)
+
+	// Test case 1: Int values, val2 <= val1
+	err := g.ExecuteProgram(
+		[]StackElement{
+			{Value: 5, Type: Int},
+			{Value: 10, Type: Int},
+			{Value: LS_THAN_EQ_OP, Type: Operator},
+		},
+	)
+	if err != nil {
+		t.Errorf("Error performing LessThanEqual operation: %v", err)
+	}
+
+	val, err := g.Pop()
+	if err != nil || val.Value != true {
+		t.Errorf("Error in LessThanEqual operation. Expected result true, got %v", val.Value)
+	}
+
+	// Test case 2: Int values, val2 > val1
+	err = g.ExecuteProgram(
+		[]StackElement{
+			{Value: 10, Type: Int},
+			{Value: 5, Type: Int},
+			{Value: LS_THAN_EQ_OP, Type: Operator},
+		},
+	)
+	if err != nil {
+		t.Errorf("Error performing LessThanEqual operation: %v", err)
+	}
+
+	val, err = g.Pop()
+	if err != nil || val.Value != false {
+		t.Errorf("Error in LessThanEqual operation. Expected result false, got %v", val.Value)
+	}
+
+	// Test case 3: Float values, val2 <= val1
+	err = g.ExecuteProgram(
+		[]StackElement{
+			{Value: 5.5, Type: Float},
+			{Value: 10.5, Type: Float},
+			{Value: LS_THAN_EQ_OP, Type: Operator},
+		},
+	)
+	if err != nil {
+		t.Errorf("Error performing LessThanEqual operation: %v", err)
+	}
+
+	val, err = g.Pop()
+	if err != nil || val.Value != true {
+		t.Errorf("Error in LessThanEqual operation. Expected result true, got %v", val.Value)
+	}
+
+	// Test case 4: Float values, val2 > val1
+	err = g.ExecuteProgram(
+		[]StackElement{
+			{Value: 10.5, Type: Float},
+			{Value: 5.5, Type: Float},
+			{Value: LS_THAN_EQ_OP, Type: Operator},
+		},
+	)
+	if err != nil {
+		t.Errorf("Error performing LessThanEqual operation: %v", err)
+	}
+
+	val, err = g.Pop()
+	if err != nil || val.Value != false {
+		t.Errorf("Error in LessThanEqual operation. Expected result false, got %v", val.Value)
+	}
+
+	// Test case 5: Different types
+	err = g.ExecuteProgram(
+		[]StackElement{
+			{Value: 5, Type: Int},
+			{Value: 5.5, Type: Float},
+			{Value: LS_THAN_EQ_OP, Type: Operator},
+		},
+	)
+	if err != nil {
+		t.Errorf("Error performing LessThanEqual operation: %v", err)
+	}
+
+	val, err = g.Pop()
+	if err != nil || val.Value != true {
+		t.Errorf("Error in LessThanEqual operation. Expected result true, got %v", val.Value)
 	}
 }
