@@ -24,7 +24,6 @@ const (
 	EXP_OP
 	INC_OP
 	DEC_OP
-	NEG_OP
 
 	// Stack manipulation operations
 	SWAP_OP
@@ -57,7 +56,6 @@ var operatorMap = map[string]Operation{
 	"^":     EXP_OP,
 	"++":    INC_OP,
 	"--":    DEC_OP,
-	"neg":   NEG_OP,
 	"swap":  SWAP_OP,
 	"dup":   DUP_OP,
 	"drop":  DROP_OP,
@@ -117,6 +115,10 @@ func ReadGorthFile(filename string) ([]string, error) {
 	var lines []string
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
+		// if line starts with a comment, ignore it
+		if strings.HasPrefix(scanner.Text(), "#") {
+			continue
+		}
 		lines = append(lines, scanner.Text())
 	}
 
@@ -531,16 +533,23 @@ func (g *Gorth) Not() error {
 		return err
 	}
 
-	// check types
-	if val1.Type != Bool {
+	switch {
+	case val1.Type == Bool && val1.Value.(bool):
+		g.Push(StackElement{Type: Bool, Value: false})
+	case val1.Type == Bool && !val1.Value.(bool):
+		g.Push(StackElement{Type: Bool, Value: true})
+	case val1.Type == Int && val1.Value.(int) != 0:
+		g.Push(StackElement{Type: Int, Value: val1.Value.(int) * -1})
+	case val1.Type == Int && val1.Value.(int) == 0:
+		g.Push(StackElement{Type: Int, Value: 0})
+	case val1.Type == Float && val1.Value.(float64) != 0:
+		g.Push(StackElement{Type: Float, Value: val1.Value.(float64) * -1})
+	case val1.Type == Float && val1.Value.(float64) == 0:
+		g.Push(StackElement{Type: Float, Value: 0.0})
+	default:
 		return errors.New("ERROR: cannot perform NOT_OP on non boolean types")
 	}
 
-	if val1.Value.(bool) {
-		g.Push(StackElement{Type: Bool, Value: false})
-	} else {
-		g.Push(StackElement{Type: Bool, Value: true})
-	}
 	return nil
 }
 
@@ -737,11 +746,6 @@ func (g *Gorth) ExecuteProgram(program []StackElement) error {
 				}
 			case DEC_OP:
 				err := g.Dec()
-				if err != nil {
-					return err
-				}
-			case NEG_OP:
-				err := g.Neg()
 				if err != nil {
 					return err
 				}

@@ -177,25 +177,6 @@ func TestDecOperation(t *testing.T) {
 	}
 }
 
-func TestNegOperation(t *testing.T) {
-	g := NewGorth(false, false)
-
-	err := g.ExecuteProgram(
-		[]StackElement{
-			{Value: 5, Type: Int},
-			{Value: NEG_OP, Type: Operator},
-		},
-	)
-	if err != nil {
-		t.Errorf("Error performing negation operation: %v", err)
-	}
-
-	val, err := g.Pop()
-	if err != nil || val.Value != -5 {
-		t.Errorf("Error in negation operation. Expected result -5, got %d", val.Value)
-	}
-}
-
 func TestDupOperation(t *testing.T) {
 	g := NewGorth(false, false)
 
