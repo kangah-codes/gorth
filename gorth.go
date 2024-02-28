@@ -101,6 +101,7 @@ type Variable struct {
 	Type  Type
 	Value interface{}
 	Name  string
+	Const bool
 }
 
 type Gorth struct {
@@ -176,7 +177,8 @@ func Tokenize(s string) ([]StackElement, map[string]Variable, error) {
 	boolRegex := regexp.MustCompile(`^(true|false)$`)
 	operatorRegex := regexp.MustCompile(`^(\+|-|\*|/|%|\^|\+\+|--|neg|swap|dup|drop|dump|print|rot|&&|\|\||!|==|!=|===|>|<|>=|<=)$`)
 	varNameRegex := regexp.MustCompile(`^\/[a-zA-Z_][a-zA-Z0-9_]*$`)
-	keyWordRegex := regexp.MustCompile(`^(def)$`)
+	// TODO: rename this
+	keyWordRegex := regexp.MustCompile(`^(def|const)$`)
 
 	// Split the string into tokens
 	r := regexp.MustCompile(`"[^"]*"|\S+`)
@@ -208,6 +210,11 @@ func Tokenize(s string) ([]StackElement, map[string]Variable, error) {
 					tokens = append(tokens, StackElement{Type: Operator, Value: operatorMap[s]})
 				case keyWordRegex.MatchString(s):
 					// Reset back to normal state since we've encountered the def keyword which means we're done declaring variables
+					if strings.TrimSpace(s) == "const" {
+						// variable is a constant
+						lastAddedVariable.Const = true
+						variables[lastAddedVariable.Name] = lastAddedVariable
+					}
 				default:
 					return nil, nil, fmt.Errorf("invalid token: %s", s)
 				}
