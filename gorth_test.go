@@ -412,8 +412,13 @@ func TestNotOperation(t *testing.T) {
 			{Value: NOT_OP, Type: Operator},
 		},
 	)
-	if err == nil {
-		t.Errorf("Expected error performing NOT operation, but got nil")
+	if err != nil {
+		t.Errorf("Error performing NOT operation: %v", err)
+	}
+
+	val, err = g.Pop()
+	if err != nil || val.Value != -5 {
+		t.Errorf("Error in NOT operation. Expected result -5, got %v", val.Value)
 	}
 }
 
@@ -942,5 +947,47 @@ func TestLessThanEqualOperation(t *testing.T) {
 	val, err = g.Pop()
 	if err != nil || val.Value != true {
 		t.Errorf("Error in LessThanEqual operation. Expected result true, got %v", val.Value)
+	}
+}
+func TestRotOperation(t *testing.T) {
+	g := NewGorth(false, false)
+
+	// Test case 1: Valid rotation
+	err := g.ExecuteProgram(
+		[]StackElement{
+			{Value: 1, Type: Int}, // a
+			{Value: 2, Type: Int}, // b
+			{Value: 3, Type: Int}, // c
+			{Value: ROT_OP, Type: Operator},
+		},
+	)
+	if err != nil {
+		t.Errorf("Error performing rotation operation: %v", err)
+	}
+
+	val1, err := g.Pop()
+	if err != nil || val1.Value != 1 {
+		t.Errorf("Error in rotation operation. Expected result 1, got %d", val1.Value)
+	}
+
+	val2, err := g.Pop()
+	if err != nil || val2.Value != 3 {
+		t.Errorf("Error in rotation operation. Expected result 3, got %d", val2.Value)
+	}
+
+	val3, err := g.Pop()
+	if err != nil || val3.Value != 2 {
+		t.Errorf("Error in rotation operation. Expected result 2, got %d", val3.Value)
+	}
+
+	// Test case 2: Insufficient elements on stack
+	err = g.ExecuteProgram(
+		[]StackElement{
+			{Value: 1, Type: Int},
+			{Value: ROT_OP, Type: Operator},
+		},
+	)
+	if err == nil {
+		t.Errorf("Expected error performing rotation operation, but got nil")
 	}
 }

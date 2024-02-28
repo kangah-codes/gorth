@@ -15,6 +15,10 @@ import (
 type Operation int
 
 const (
+	MAX_STACK_SIZE = 999_999
+)
+
+const (
 	// Arithmetic operations
 	ADD_OP Operation = iota
 	SUB_OP
@@ -30,6 +34,7 @@ const (
 	DUP_OP
 	DROP_OP
 	DUMP_OP
+	ROT_OP
 
 	// Print operation
 	PRINT_OP
@@ -61,6 +66,7 @@ var operatorMap = map[string]Operation{
 	"drop":  DROP_OP,
 	"dump":  DUMP_OP,
 	"print": PRINT_OP,
+	"rot":   ROT_OP,
 	"&&":    AND_OP,
 	"||":    OR_OP,
 	"!":     NOT_OP,
@@ -90,17 +96,26 @@ type StackElement struct {
 	Value interface{} // Use interface{} to support both int and string values
 }
 
+type Variable struct {
+	Type  Type
+	Value interface{}
+	Name  string
+}
+
 type Gorth struct {
-	ExecStack  []StackElement
-	DebugMode  bool
-	StrictMode bool
+	ExecStack    []StackElement
+	VarStack     map[string]Variable
+	DebugMode    bool
+	StrictMode   bool
+	MaxStackSize int
 }
 
 func NewGorth(debugMode, strictMode bool) *Gorth {
 	return &Gorth{
-		ExecStack:  []StackElement{},
-		DebugMode:  debugMode,
-		StrictMode: strictMode,
+		ExecStack:    []StackElement{},
+		DebugMode:    debugMode,
+		StrictMode:   strictMode,
+		MaxStackSize: MAX_STACK_SIZE,
 	}
 }
 
@@ -169,7 +184,7 @@ func Tokenize(s string) ([]StackElement, error) {
 }
 
 func (g *Gorth) Push(val StackElement) error {
-	if len(g.ExecStack) >= 1000 {
+	if len(g.ExecStack) >= g.MaxStackSize {
 		return errors.New("ERROR: stack overflow")
 	}
 	g.ExecStack = append(g.ExecStack, val)
@@ -208,9 +223,47 @@ func (g *Gorth) Dump() error {
 	return nil
 }
 
+func (g *Gorth) Rot() error {
+	if len(g.ExecStack) < 3 {
+		return errors.New("ERROR: at least 3 elements need to be on stack to perform ROT_OP")
+	}
+
+	val1, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	val2, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	val3, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	err = g.Push(val2)
+	if err != nil {
+		return err
+	}
+
+	err = g.Push(val1)
+	if err != nil {
+		return err
+	}
+
+	err = g.Push(val3)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (g *Gorth) Peek() (StackElement, error) {
 	if len(g.ExecStack) < 1 {
-		return StackElement{}, errors.New("ERROR: cannot peek at an empty stack")
+		return StackElement{}, errors.New("ERROR: cannot PEEK_OP at an empty stack")
 	}
 	return g.ExecStack[len(g.ExecStack)-1], nil
 }
@@ -818,6 +871,11 @@ func (g *Gorth) ExecuteProgram(program []StackElement) error {
 				}
 			case LS_THAN_EQ_OP:
 				err := g.LessThanEqual()
+				if err != nil {
+					return err
+				}
+			case ROT_OP:
+				err := g.Rot()
 				if err != nil {
 					return err
 				}
