@@ -105,7 +105,7 @@ type Variable struct {
 
 type Gorth struct {
 	ExecStack    []StackElement
-	VarStack     []Variable
+	VariableMap  map[string]Variable
 	DebugMode    bool
 	StrictMode   bool
 	MaxStackSize int
@@ -151,7 +151,7 @@ const (
 )
 
 type Tokeniser struct {
-	HandleToken func(s string) ([]StackElement, []Variable, error)
+	HandleToken func(s string) ([]StackElement, map[string]Variable, error)
 }
 
 type TokeniserStateMachine struct {
@@ -164,9 +164,10 @@ func (t *TokeniserStateMachine) SetState(state int) {
 }
 
 // Tokenizer
-func Tokenize(s string) ([]StackElement, []Variable, error) {
+func Tokenize(s string) ([]StackElement, map[string]Variable, error) {
 	var tokens []StackElement
-	var variables []Variable
+	var lastAddedVariable Variable
+	variables := make(map[string]Variable)
 
 	// Define regex patterns
 	integerRegex := regexp.MustCompile(`^-?\d+$`)
@@ -189,8 +190,7 @@ func Tokenize(s string) ([]StackElement, []Variable, error) {
 	// Define state machine
 	stateMachine.States = map[int]Tokeniser{
 		StateNormal: {
-			HandleToken: func(s string) ([]StackElement, []Variable, error) {
-				fmt.Println("Normal state: ", s)
+			HandleToken: func(s string) ([]StackElement, map[string]Variable, error) {
 				switch {
 				case integerRegex.MatchString(s):
 					val, _ := strconv.Atoi(s)
@@ -205,7 +205,7 @@ func Tokenize(s string) ([]StackElement, []Variable, error) {
 					val := s == "true"
 					tokens = append(tokens, StackElement{Type: Bool, Value: val})
 				case operatorRegex.MatchString(s):
-					tokens = append(tokens, StackElement{Type: Operator, Value: s})
+					tokens = append(tokens, StackElement{Type: Operator, Value: operatorMap[s]})
 				case keyWordRegex.MatchString(s):
 					// Reset back to normal state since we've encountered the def keyword which means we're done declaring variables
 				default:
@@ -216,45 +216,37 @@ func Tokenize(s string) ([]StackElement, []Variable, error) {
 			},
 		},
 		StateVarDeclaration: {
-			HandleToken: func(part string) ([]StackElement, []Variable, error) {
+			HandleToken: func(part string) ([]StackElement, map[string]Variable, error) {
 				// Assuming the value immediately follows the variable name
 				// Add the variable and its value to the map
 				// check if the variable map is not empty
 				// if it is not empty, get the last token and add the value to the variable map
 				// if it is empty, return an error
-				fmt.Println("Variable declaration state: ", part, variables)
 				if len(variables) > 0 {
-					lastVariable := variables[len(variables)-1]
-					fmt.Println("Last variable: ", lastVariable)
 					switch {
 					case integerRegex.MatchString(part):
-						fmt.Println("Integer match: ", part)
 						val, _ := strconv.Atoi(part)
-						lastVariable.Value = val
-						lastVariable.Type = Int
-						variables[len(variables)-1] = lastVariable
+						lastAddedVariable.Value = val
+						lastAddedVariable.Type = Int
+						variables[lastAddedVariable.Name] = lastAddedVariable
 					case floatRegex.MatchString(part):
 						val, _ := strconv.ParseFloat(part, 64)
-						lastVariable.Value = val
-						lastVariable.Type = Float
-						variables[len(variables)-1] = lastVariable
+						lastAddedVariable.Value = val
+						lastAddedVariable.Type = Float
+						variables[lastAddedVariable.Name] = lastAddedVariable
 					case stringRegex.MatchString(part):
 						value := strings.Trim(part, `"`)
-						lastVariable.Value = value
-						lastVariable.Type = String
-						variables[len(variables)-1] = lastVariable
+						lastAddedVariable.Value = value
+						lastAddedVariable.Type = String
+						variables[lastAddedVariable.Name] = lastAddedVariable
 					case boolRegex.MatchString(part):
 						val := part == "true"
-						lastVariable.Value = val
-						lastVariable.Type = Bool
-						variables[len(variables)-1] = lastVariable
+						lastAddedVariable.Value = val
+						lastAddedVariable.Type = Bool
+						variables[lastAddedVariable.Name] = lastAddedVariable
 					default:
 						return nil, nil, fmt.Errorf("invalid type: %s", part)
 					}
-
-					fmt.Println("Variable value: ", part)
-					fmt.Println("Variable type: ", lastVariable.Type)
-					fmt.Println("Variable map: ", variables)
 				}
 
 				// Reset the state to normal
@@ -267,40 +259,34 @@ func Tokenize(s string) ([]StackElement, []Variable, error) {
 
 	// Parse each token
 	for _, part := range parts {
-		fmt.Println("Part: ", part)
+		// Check if the variable name already exists
+		if _, exists := variables[part]; exists {
+			return nil, nil, fmt.Errorf("variable %s is already declared", part)
+		}
 
 		// set the machine state based on the current token
 		if varNameRegex.MatchString(part) {
 			stateMachine.SetState(StateVarDeclaration)
 			varName := part[1:] // Remove the leading '/'
-			variables = append(variables, Variable{Name: varName, Type: Identifier})
-			fmt.Println("Variable name: ", varName)
-
-			// Skip the rest of the loop since we don't want to add the variable name to the tokens
+			variables[varName] = Variable{Name: varName, Type: Identifier}
+			lastAddedVariable = variables[varName]
 			continue
 		}
 
-		switch stateMachine.CurrentState {
-		case StateNormal:
-			tokens, _, err := stateMachine.States[StateNormal].HandleToken(part)
+		_, _, err := stateMachine.States[stateMachine.CurrentState].HandleToken(part)
 
-			fmt.Println("Tokens: ", tokens)
-
-			if err != nil {
-				return nil, nil, err
-			}
-		case StateVarDeclaration:
-			_, variables, err := stateMachine.States[StateVarDeclaration].HandleToken(part)
-
-			fmt.Println("Variables: ", variables)
-
-			if err != nil {
-				return nil, nil, err
-			}
+		if err != nil {
+			return nil, nil, err
 		}
 	}
 
 	return tokens, variables, nil
+}
+
+func (g *Gorth) GPrint(val interface{}) {
+	if g.DebugMode {
+		fmt.Println(val)
+	}
 }
 
 func (g *Gorth) Push(val StackElement) error {
@@ -1086,9 +1072,9 @@ func main() {
 	// create a new gorth instance
 	g := NewGorth(debugMode, strictMode)
 
-	g.VarStack = variables
+	g.VariableMap = variables
 
-	fmt.Println("Variables: ", g.VarStack, variables)
+	fmt.Println("Variables: ", g.VariableMap)
 
 	start := time.Now()
 
