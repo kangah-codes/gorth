@@ -89,6 +89,7 @@ const (
 	Operator
 	Identifier
 	SpecialSymbol
+	KeyWord
 )
 
 type StackElement struct {
@@ -104,7 +105,7 @@ type Variable struct {
 
 type Gorth struct {
 	ExecStack    []StackElement
-	VarStack     map[string]Variable
+	VarStack     []Variable
 	DebugMode    bool
 	StrictMode   bool
 	MaxStackSize int
@@ -144,43 +145,162 @@ func ReadGorthFile(filename string) ([]string, error) {
 	return lines, nil
 }
 
-// Tokenizer
-func Tokenize(s string) ([]StackElement, error) {
-	var tokens []StackElement
+const (
+	StateNormal = iota
+	StateVarDeclaration
+)
 
-	// define regex patterns
+type Tokeniser struct {
+	HandleToken func(s string) ([]StackElement, []Variable, error)
+}
+
+type TokeniserStateMachine struct {
+	CurrentState int
+	States       map[int]Tokeniser
+}
+
+func (t *TokeniserStateMachine) SetState(state int) {
+	t.CurrentState = state
+}
+
+// Tokenizer
+func Tokenize(s string) ([]StackElement, []Variable, error) {
+	var tokens []StackElement
+	var variables []Variable
+
+	// Define regex patterns
 	integerRegex := regexp.MustCompile(`^-?\d+$`)
 	floatRegex := regexp.MustCompile(`^-?\d+\.\d+$`)
 	stringRegex := regexp.MustCompile(`^".*"$`)
 	boolRegex := regexp.MustCompile(`^(true|false)$`)
-	operatorRegex := regexp.MustCompile(`^(\+|-|\*|/|%|\^|\+\+|--|neg|swap|dup|drop|dump|print|&&|\|\||!|==|!=|===|>|<|>=|<=)$`)
+	operatorRegex := regexp.MustCompile(`^(\+|-|\*|/|%|\^|\+\+|--|neg|swap|dup|drop|dump|print|rot|&&|\|\||!|==|!=|===|>|<|>=|<=)$`)
+	varNameRegex := regexp.MustCompile(`^\/[a-zA-Z_][a-zA-Z0-9_]*$`)
+	keyWordRegex := regexp.MustCompile(`^(def)$`)
 
-	// split the string into tokens
+	// Split the string into tokens
 	r := regexp.MustCompile(`"[^"]*"|\S+`)
 	parts := r.FindAllString(s, -1)
 
-	// parse each token
+	// Current state
+	state := StateNormal
+	stateMachine := TokeniserStateMachine{}
+	stateMachine.SetState(state)
+
+	// Define state machine
+	stateMachine.States = map[int]Tokeniser{
+		StateNormal: {
+			HandleToken: func(s string) ([]StackElement, []Variable, error) {
+				fmt.Println("Normal state: ", s)
+				switch {
+				case integerRegex.MatchString(s):
+					val, _ := strconv.Atoi(s)
+					tokens = append(tokens, StackElement{Type: Int, Value: val})
+				case floatRegex.MatchString(s):
+					val, _ := strconv.ParseFloat(s, 64)
+					tokens = append(tokens, StackElement{Type: Float, Value: val})
+				case stringRegex.MatchString(s):
+					value := strings.Trim(s, `"`)
+					tokens = append(tokens, StackElement{Type: String, Value: value})
+				case boolRegex.MatchString(s):
+					val := s == "true"
+					tokens = append(tokens, StackElement{Type: Bool, Value: val})
+				case operatorRegex.MatchString(s):
+					tokens = append(tokens, StackElement{Type: Operator, Value: s})
+				case keyWordRegex.MatchString(s):
+					// Reset back to normal state since we've encountered the def keyword which means we're done declaring variables
+				default:
+					return nil, nil, fmt.Errorf("invalid token: %s", s)
+				}
+
+				return tokens, nil, nil
+			},
+		},
+		StateVarDeclaration: {
+			HandleToken: func(part string) ([]StackElement, []Variable, error) {
+				// Assuming the value immediately follows the variable name
+				// Add the variable and its value to the map
+				// check if the variable map is not empty
+				// if it is not empty, get the last token and add the value to the variable map
+				// if it is empty, return an error
+				fmt.Println("Variable declaration state: ", part, variables)
+				if len(variables) > 0 {
+					lastVariable := variables[len(variables)-1]
+					fmt.Println("Last variable: ", lastVariable)
+					switch {
+					case integerRegex.MatchString(part):
+						fmt.Println("Integer match: ", part)
+						val, _ := strconv.Atoi(part)
+						lastVariable.Value = val
+						lastVariable.Type = Int
+						variables[len(variables)-1] = lastVariable
+					case floatRegex.MatchString(part):
+						val, _ := strconv.ParseFloat(part, 64)
+						lastVariable.Value = val
+						lastVariable.Type = Float
+						variables[len(variables)-1] = lastVariable
+					case stringRegex.MatchString(part):
+						value := strings.Trim(part, `"`)
+						lastVariable.Value = value
+						lastVariable.Type = String
+						variables[len(variables)-1] = lastVariable
+					case boolRegex.MatchString(part):
+						val := part == "true"
+						lastVariable.Value = val
+						lastVariable.Type = Bool
+						variables[len(variables)-1] = lastVariable
+					default:
+						return nil, nil, fmt.Errorf("invalid type: %s", part)
+					}
+
+					fmt.Println("Variable value: ", part)
+					fmt.Println("Variable type: ", lastVariable.Type)
+					fmt.Println("Variable map: ", variables)
+				}
+
+				// Reset the state to normal
+				stateMachine.SetState(StateNormal)
+
+				return nil, variables, nil
+			},
+		},
+	}
+
+	// Parse each token
 	for _, part := range parts {
-		if integerRegex.MatchString(part) {
-			val, _ := strconv.Atoi(part)
-			tokens = append(tokens, StackElement{Type: Int, Value: val})
-		} else if floatRegex.MatchString(part) {
-			val, _ := strconv.ParseFloat(part, 64)
-			tokens = append(tokens, StackElement{Type: Float, Value: val})
-		} else if stringRegex.MatchString(part) {
-			value := strings.Trim(part, `"`)
-			tokens = append(tokens, StackElement{Type: String, Value: value})
-		} else if boolRegex.MatchString(part) {
-			val := part == "true"
-			tokens = append(tokens, StackElement{Type: Bool, Value: val})
-		} else if operatorRegex.MatchString(part) {
-			tokens = append(tokens, StackElement{Type: Operator, Value: operatorMap[part]})
-		} else {
-			return nil, errors.New("ERROR: invalid token")
+		fmt.Println("Part: ", part)
+
+		// set the machine state based on the current token
+		if varNameRegex.MatchString(part) {
+			stateMachine.SetState(StateVarDeclaration)
+			varName := part[1:] // Remove the leading '/'
+			variables = append(variables, Variable{Name: varName, Type: Identifier})
+			fmt.Println("Variable name: ", varName)
+
+			// Skip the rest of the loop since we don't want to add the variable name to the tokens
+			continue
+		}
+
+		switch stateMachine.CurrentState {
+		case StateNormal:
+			tokens, _, err := stateMachine.States[StateNormal].HandleToken(part)
+
+			fmt.Println("Tokens: ", tokens)
+
+			if err != nil {
+				return nil, nil, err
+			}
+		case StateVarDeclaration:
+			_, variables, err := stateMachine.States[StateVarDeclaration].HandleToken(part)
+
+			fmt.Println("Variables: ", variables)
+
+			if err != nil {
+				return nil, nil, err
+			}
 		}
 	}
 
-	return tokens, nil
+	return tokens, variables, nil
 }
 
 func (g *Gorth) Push(val StackElement) error {
@@ -957,7 +1077,7 @@ func main() {
 	}
 
 	// parse the program
-	program, err := Tokenize(strings.Join(lines, " "))
+	program, variables, err := Tokenize(strings.Join(lines, " "))
 
 	if err != nil {
 		panic(err)
@@ -965,6 +1085,10 @@ func main() {
 
 	// create a new gorth instance
 	g := NewGorth(debugMode, strictMode)
+
+	g.VarStack = variables
+
+	fmt.Println("Variables: ", g.VarStack, variables)
 
 	start := time.Now()
 
