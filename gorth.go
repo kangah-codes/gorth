@@ -179,6 +179,8 @@ func Tokenize(s string) ([]StackElement, map[string]Variable, error) {
 	varNameRegex := regexp.MustCompile(`^\/[a-zA-Z_][a-zA-Z0-9_]*$`)
 	// TODO: rename this
 	keyWordRegex := regexp.MustCompile(`^(def|const|=)$`)
+	// using variables : _varName
+	varUsageRegex := regexp.MustCompile(`^_[a-zA-Z_][a-zA-Z0-9_]*$`)
 
 	// Split the string into tokens
 	r := regexp.MustCompile(`"[^"]*"|\S+`)
@@ -223,8 +225,17 @@ func Tokenize(s string) ([]StackElement, map[string]Variable, error) {
 						} else {
 							stateMachine.SetState(StateVarDeclaration)
 						}
-
 					}
+				case varUsageRegex.MatchString(s):
+					// check if the variable exists
+					// if it does, add it's value to the tokens
+					variable, exists := variables[s[1:]]
+
+					if !exists {
+						return nil, nil, fmt.Errorf("variable %s has not been declared", s[1:])
+					}
+
+					tokens = append(tokens, StackElement{Type: variable.Type, Value: variable.Value})
 				default:
 					return nil, nil, fmt.Errorf("invalid token: %s", s)
 				}
@@ -241,7 +252,6 @@ func Tokenize(s string) ([]StackElement, map[string]Variable, error) {
 				// if it is empty, return an error
 				if len(variables) > 0 {
 					if operatorRegex.MatchString(part) {
-						fmt.Println("part", part)
 						// an operator follows after the variable name
 						tokens = append(tokens, StackElement{Type: Operator, Value: operatorMap[part]})
 					} else {
@@ -271,13 +281,7 @@ func Tokenize(s string) ([]StackElement, map[string]Variable, error) {
 							variables[lastAddedVariable.Name] = lastAddedVariable
 							tokens = append(tokens, StackElement{Type: Identifier, Value: lastAddedVariable.Name})
 						default:
-							if operatorRegex.MatchString(part) {
-								tokens = append(tokens, StackElement{Type: Operator, Value: operatorMap[part]})
-
-							} else {
-
-								return nil, nil, fmt.Errorf("invalid type: %s", part)
-							}
+							return nil, nil, fmt.Errorf("invalid type: %s", part)
 						}
 					}
 				}
@@ -432,13 +436,14 @@ func (g *Gorth) Print() error {
 		// we use value since we set the value of variables on the element stack to the name of the variable
 		_, exists := g.VariableMap[val.Value.(string)]
 
-		fmt.Println(g.VariableMap, exists, g.VariableMap[val.Value.(string)])
-
 		if !exists {
 			return fmt.Errorf("ERROR: variable %v has not been declared", val.Value.(string))
 		}
 
-		fmt.Println(g.VariableMap[val.Value.(string)].Value)
+		switch g.VariableMap[val.Value.(string)].Type {
+		case Int, String, Bool:
+			fmt.Println(g.VariableMap[val.Value.(string)].Value)
+		}
 	default:
 		return errors.New("ERROR: top element is not a printable type")
 	}
@@ -648,10 +653,12 @@ func (g *Gorth) Mul() error {
 	if err != nil {
 		return err
 	}
+
 	val2, err := g.Pop()
 	if err != nil {
 		return err
 	}
+
 	switch {
 	// integer multiplication
 	case val1.Type == Int && val2.Type == Int:
@@ -759,7 +766,46 @@ func (g *Gorth) Mul() error {
 				}
 				g.Push(StackElement{Type: String, Value: concat})
 			} else {
-				return errors.New("ERROR: cannot perform MUL_OP on different types")
+				return errors.New("ERROR: cannot perform MUL_OP on different types -> val1")
+			}
+		}
+	// val2 is a variable and val1 is not
+	case val1.Type != Identifier && val2.Type == Identifier:
+		_, exists2 := g.VariableMap[val2.Value.(string)]
+
+		if !exists2 {
+			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
+		}
+
+		if g.VariableMap[val2.Value.(string)].Type == val1.Type {
+			switch val1.Type {
+			case Int:
+				mul := g.VariableMap[val2.Value.(string)].Value.(int) * val1.Value.(int)
+				g.Push(StackElement{Type: Int, Value: mul})
+			case Float:
+				mul := g.VariableMap[val2.Value.(string)].Value.(float64) * val1.Value.(float64)
+				g.Push(StackElement{Type: Float, Value: mul})
+			}
+		} else {
+			// we can still multiply strings with integers
+			if g.VariableMap[val2.Value.(string)].Type == String && val1.Type == Int {
+				str := g.VariableMap[val2.Value.(string)].Value.(string)
+				num := val1.Value.(int)
+				var concat string
+				for i := 0; i < num; i++ {
+					concat += str
+				}
+				g.Push(StackElement{Type: String, Value: concat})
+			} else if g.VariableMap[val2.Value.(string)].Type == Int && val1.Type == String {
+				str := val1.Value.(string)
+				num := g.VariableMap[val2.Value.(string)].Value.(int)
+				var concat string
+				for i := 0; i < num; i++ {
+					concat += str
+				}
+				g.Push(StackElement{Type: String, Value: concat})
+			} else {
+				return errors.New("ERROR: cannot perform MUL_OP on different types -> val2")
 			}
 		}
 	// mixed type multiplication
