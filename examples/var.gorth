@@ -1,2 +1,5 @@
-/my_var 9999 def
-/myName "Joshua" const
+/myName "Hello World" def
+/myName 10 =
+
+# /my_var print
+/myName print
