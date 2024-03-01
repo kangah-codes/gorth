@@ -50,6 +50,9 @@ const (
 	LS_THAN_OP
 	GT_THAN_EQ_OP
 	LS_THAN_EQ_OP
+
+	// assignment operation
+	VAR_ASSIGN_OP
 )
 
 var operatorMap = map[string]Operation{
@@ -77,6 +80,7 @@ var operatorMap = map[string]Operation{
 	"<":     LS_THAN_OP,
 	">=":    GT_THAN_EQ_OP,
 	"<=":    LS_THAN_EQ_OP,
+	"=":     VAR_ASSIGN_OP,
 }
 
 type Type int
@@ -92,9 +96,23 @@ const (
 	KeyWord
 )
 
+var typeMap = map[Type]string{
+	Int:           "int",
+	String:        "string",
+	Bool:          "bool",
+	Operator:      "operator",
+	Identifier:    "identifier",
+	SpecialSymbol: "special symbol",
+	KeyWord:       "keyword",
+}
+
 type StackElement struct {
 	Type  Type
 	Value interface{} // Use interface{} to support both int and string values
+}
+
+func (s *StackElement) Repr() string {
+	return fmt.Sprintf("Type: %v\nValue: %v", typeMap[s.Type], s.Value)
 }
 
 type Variable struct {
@@ -175,7 +193,7 @@ func Tokenize(s string) ([]StackElement, map[string]Variable, error) {
 	floatRegex := regexp.MustCompile(`^-?\d+\.\d+$`)
 	stringRegex := regexp.MustCompile(`^".*"$`)
 	boolRegex := regexp.MustCompile(`^(true|false)$`)
-	operatorRegex := regexp.MustCompile(`^(\+|-|\*|/|%|\^|\+\+|--|neg|swap|dup|drop|dump|print|rot|&&|\|\||!|==|!=|===|>|<|>=|<=)$`)
+	operatorRegex := regexp.MustCompile(`^(\+|-|\*|/|%|\^|\+\+|--|neg|swap|dup|drop|dump|print|rot|&&|\|\||!|==|!=|===|>|<|>=|<=|=)$`)
 	varNameRegex := regexp.MustCompile(`^\/[a-zA-Z_][a-zA-Z0-9_]*$`)
 	// TODO: rename this
 	keyWordRegex := regexp.MustCompile(`^(def|const|=)$`)
@@ -216,16 +234,27 @@ func Tokenize(s string) ([]StackElement, map[string]Variable, error) {
 						// variable is a constant
 						lastAddedVariable.Const = true
 						variables[lastAddedVariable.Name] = lastAddedVariable
-					} else if strings.TrimSpace(s) == "=" {
-						// means we want to reassign the value of a variable
-						// check if var is a constant
-						// if it is, return an error
-						if lastAddedVariable.Const {
-							return nil, nil, fmt.Errorf("cannot reassign a constant variable: %s", lastAddedVariable.Name)
-						} else {
-							stateMachine.SetState(StateVarDeclaration)
-						}
 					}
+				case operatorRegex.MatchString(s):
+					// means an operator comes after a variable, most likely we are reassiging a variable
+					if len(variables) < 1 {
+						return nil, nil, errors.New("ERROR: no variable to assign to")
+					}
+
+					if strings.TrimSpace(s) == "=" && lastAddedVariable.Const {
+						return nil, nil, errors.New("ERROR: cannot reassign a constant")
+					}
+				// had to add new syntax to check if a variable was being used
+				// because the same syntax caused a bug where the last known variable was used even if
+				// the variable name was not the same
+				/* Example:
+				 * /myName "Joshua" def
+				 * /notMyName print
+				 * This code should throw an error since we don't have notMyName,
+				 * But since our state machine recognises that syntax for variable declaration
+				 * We just jump into adding the print operation to the exec stack,
+				 * Which then pops the topmost value which would be the last known variable, ie. myName
+				 */
 				case varUsageRegex.MatchString(s):
 					// check if the variable exists
 					// if it does, add it's value to the tokens
@@ -235,7 +264,8 @@ func Tokenize(s string) ([]StackElement, map[string]Variable, error) {
 						return nil, nil, fmt.Errorf("variable %s has not been declared", s[1:])
 					}
 
-					tokens = append(tokens, StackElement{Type: variable.Type, Value: variable.Value})
+					// tokens = append(tokens, StackElement{Type: variable.Type, Value: variable.Value})
+					tokens = append(tokens, StackElement{Type: Identifier, Value: variable.Name})
 				default:
 					return nil, nil, fmt.Errorf("invalid token: %s", s)
 				}
@@ -252,7 +282,7 @@ func Tokenize(s string) ([]StackElement, map[string]Variable, error) {
 				// if it is empty, return an error
 				if len(variables) > 0 {
 					if operatorRegex.MatchString(part) {
-						// an operator follows after the variable name
+						// idk why this would happen
 						tokens = append(tokens, StackElement{Type: Operator, Value: operatorMap[part]})
 					} else {
 						switch {
@@ -466,6 +496,8 @@ func (g *Gorth) Add() error {
 		g.Push(StackElement{Type: Int, Value: sum})
 	// string concatenation
 	case val1.Type == String && val2.Type == String:
+		// for string concatenation, we reverse the order of the strings
+		// since the first string to be popped is the second string and vice versa
 		concat := val2.Value.(string) + val1.Value.(string)
 		g.Push(StackElement{Type: String, Value: concat})
 	// float addition
@@ -521,7 +553,9 @@ func (g *Gorth) Add() error {
 				sum := g.VariableMap[val1.Value.(string)].Value.(float64) + val2.Value.(float64)
 				g.Push(StackElement{Type: Float, Value: sum})
 			case String:
-				concat := val2.Value.(string) + g.VariableMap[val1.Value.(string)].Value.(string)
+				// we reverse the order of the strings
+				// since the first string to be popped is the second string and vice versa
+				concat := g.VariableMap[val1.Value.(string)].Value.(string) + val2.Value.(string)
 				g.Push(StackElement{Type: String, Value: concat})
 			}
 		} else {
@@ -1891,6 +1925,71 @@ func (g *Gorth) LessThanEqual() error {
 	return nil
 }
 
+func (g *Gorth) VarAssign() error {
+	val1, err := g.Pop()
+
+	if err != nil {
+		return errors.New("ERROR: stack is empty, cannot assign from an empty stack")
+	}
+
+	// this should be the variable on the stack
+	val2, err := g.Pop()
+
+	if err != nil {
+		return errors.New("ERROR: stack is empty, cannot assign from an empty stack")
+	}
+
+	// if this value is not an identifier
+	if val2.Type != Identifier {
+		return errors.New("ERROR: cannot assign a value to a non-variable")
+	}
+
+	// if the value is an identifier
+	// check if the variable has been declared
+	// if it has, update the value
+	variable, exists := g.VariableMap[val2.Value.(string)]
+
+	if !exists {
+		return fmt.Errorf("ERROR: variable %v has not been declared on the stack", val2.Value.(string))
+	}
+
+	if g.VariableMap[val2.Value.(string)].Const {
+		return fmt.Errorf("ERROR: variable %v is a constant and cannot be reassigned", val2.Value.(string))
+	}
+
+	// change the value of the variable in the variable map
+	switch variable.Type {
+	case Int:
+		if val1.Type == Int {
+			g.VariableMap[val2.Value.(string)] = Variable{Type: Int, Value: val1.Value.(int), Name: val2.Value.(string), Const: false}
+		} else {
+			return errors.New("ERROR: cannot assign a non-integer value to an integer variable")
+		}
+	case Float:
+		if val1.Type == Float {
+			g.VariableMap[val2.Value.(string)] = Variable{Type: Float, Value: val1.Value.(float64), Name: val2.Value.(string), Const: false}
+		} else {
+			return errors.New("ERROR: cannot assign a non-float value to a float variable")
+		}
+	case Bool:
+		if val1.Type == Bool {
+			g.VariableMap[val2.Value.(string)] = Variable{Type: Bool, Value: val1.Value.(bool), Name: val2.Value.(string), Const: false}
+		} else {
+			return errors.New("ERROR: cannot assign a non-boolean value to a boolean variable")
+		}
+	case String:
+		if val1.Type == String {
+			g.VariableMap[val2.Value.(string)] = Variable{Type: String, Value: val1.Value.(string), Name: val2.Value.(string), Const: false}
+		} else {
+			return errors.New("ERROR: cannot assign a non-string value to a string variable")
+		}
+	default:
+		return errors.New("ERROR: cannot assign a value to a non-variable")
+	}
+
+	return nil
+}
+
 func (g *Gorth) PrintStack() {
 	fmt.Printf("Program stack: %v\n", g.ExecStack)
 }
@@ -2018,6 +2117,11 @@ func (g *Gorth) ExecuteProgram(program []StackElement) error {
 				}
 			case ROT_OP:
 				err := g.Rot()
+				if err != nil {
+					return err
+				}
+			case VAR_ASSIGN_OP:
+				err := g.VarAssign()
 				if err != nil {
 					return err
 				}

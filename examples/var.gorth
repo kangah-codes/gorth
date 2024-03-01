@@ -1,5 +1,5 @@
 /myName "Hello World meow" const
-/test 10 const
+/test "GIGI" def
+_test _myName " rawr" + =
 
-_test 10 * print
-# /myName 10 * print
+_test print
