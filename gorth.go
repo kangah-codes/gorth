@@ -498,15 +498,18 @@ func (g *Gorth) Add() error {
 	case val1.Type == String && val2.Type == String:
 		// for string concatenation, we reverse the order of the strings
 		// since the first string to be popped is the second string and vice versa
-		concat := val2.Value.(string) + val1.Value.(string)
+		concat := val1.Value.(string) + val2.Value.(string)
 		g.Push(StackElement{Type: String, Value: concat})
 	// float addition
 	case val1.Type == Float && val2.Type == Float:
 		sum := val1.Value.(float64) + val2.Value.(float64)
 		g.Push(StackElement{Type: Float, Value: sum})
 	// mixed type addition
-	case (val1.Type == Int && val2.Type == Float) || (val1.Type == Float && val2.Type == Int):
+	case val1.Type == Int && val2.Type == Float:
 		sum := val2.Value.(float64) + float64(val1.Value.(int))
+		g.Push(StackElement{Type: Float, Value: sum})
+	case val1.Type == Float && val2.Type == Int:
+		sum := val1.Value.(float64) + float64(val2.Value.(int))
 		g.Push(StackElement{Type: Float, Value: sum})
 	// both variables
 	case val1.Type == Identifier && val2.Type == Identifier:
@@ -521,21 +524,41 @@ func (g *Gorth) Add() error {
 			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
 		}
 
-		if g.VariableMap[val1.Value.(string)].Type == g.VariableMap[val2.Value.(string)].Type {
-			switch g.VariableMap[val1.Value.(string)].Type {
-			case Int:
-				sum := g.VariableMap[val1.Value.(string)].Value.(int) + g.VariableMap[val2.Value.(string)].Value.(int)
-				g.Push(StackElement{Type: Int, Value: sum})
-			case Float:
-				sum := g.VariableMap[val1.Value.(string)].Value.(float64) + g.VariableMap[val2.Value.(string)].Value.(float64)
-				g.Push(StackElement{Type: Float, Value: sum})
-			case String:
-				concat := g.VariableMap[val2.Value.(string)].Value.(string) + g.VariableMap[val1.Value.(string)].Value.(string)
-				g.Push(StackElement{Type: String, Value: concat})
-			}
-		} else {
+		switch {
+		case g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == Int:
+			sum := g.VariableMap[val1.Value.(string)].Value.(int) + g.VariableMap[val2.Value.(string)].Value.(int)
+			g.Push(StackElement{Type: Int, Value: sum})
+		case g.VariableMap[val1.Value.(string)].Type == Float && g.VariableMap[val2.Value.(string)].Type == Float:
+			sum := g.VariableMap[val1.Value.(string)].Value.(float64) + g.VariableMap[val2.Value.(string)].Value.(float64)
+			g.Push(StackElement{Type: Float, Value: sum})
+		case g.VariableMap[val1.Value.(string)].Type == String && g.VariableMap[val2.Value.(string)].Type == String:
+			concat := g.VariableMap[val1.Value.(string)].Value.(string) + g.VariableMap[val2.Value.(string)].Value.(string)
+			g.Push(StackElement{Type: String, Value: concat})
+		case g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == Float:
+			sum := float64(g.VariableMap[val1.Value.(string)].Value.(int)) + g.VariableMap[val2.Value.(string)].Value.(float64)
+			g.Push(StackElement{Type: Float, Value: sum})
+		case g.VariableMap[val1.Value.(string)].Type == Float && g.VariableMap[val2.Value.(string)].Type == Int:
+			sum := g.VariableMap[val1.Value.(string)].Value.(float64) + float64(g.VariableMap[val2.Value.(string)].Value.(int))
+			g.Push(StackElement{Type: Float, Value: sum})
+		default:
 			return errors.New("ERROR: cannot perform ADD_OP on different types")
 		}
+
+		// if g.VariableMap[val1.Value.(string)].Type == g.VariableMap[val2.Value.(string)].Type {
+		// 	switch g.VariableMap[val1.Value.(string)].Type {
+		// 	case Int:
+		// 		sum := g.VariableMap[val1.Value.(string)].Value.(int) + g.VariableMap[val2.Value.(string)].Value.(int)
+		// 		g.Push(StackElement{Type: Int, Value: sum})
+		// 	case Float:
+		// 		sum := g.VariableMap[val1.Value.(string)].Value.(float64) + g.VariableMap[val2.Value.(string)].Value.(float64)
+		// 		g.Push(StackElement{Type: Float, Value: sum})
+		// 	case String:
+		// 		concat := g.VariableMap[val2.Value.(string)].Value.(string) + g.VariableMap[val1.Value.(string)].Value.(string)
+		// 		g.Push(StackElement{Type: String, Value: concat})
+		// 	}
+		// } else {
+		// 	return errors.New("ERROR: cannot perform ADD_OP on different types")
+		// }
 	// val1 is a variable and val2 is not
 	case val1.Type == Identifier && val2.Type != Identifier:
 		_, exists1 := g.VariableMap[val1.Value.(string)]
@@ -625,16 +648,14 @@ func (g *Gorth) Sub() error {
 			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
 		}
 
-		if g.VariableMap[val1.Value.(string)].Type == g.VariableMap[val2.Value.(string)].Type {
-			switch g.VariableMap[val1.Value.(string)].Type {
-			case Int:
-				sub := g.VariableMap[val2.Value.(string)].Value.(int) - g.VariableMap[val1.Value.(string)].Value.(int)
-				g.Push(StackElement{Type: Int, Value: sub})
-			case Float:
-				sub := g.VariableMap[val2.Value.(string)].Value.(float64) - g.VariableMap[val1.Value.(string)].Value.(float64)
-				g.Push(StackElement{Type: Float, Value: sub})
-			}
-		} else {
+		switch {
+		case g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == Int:
+			sub := g.VariableMap[val2.Value.(string)].Value.(int) - g.VariableMap[val1.Value.(string)].Value.(int)
+			g.Push(StackElement{Type: Int, Value: sub})
+		case g.VariableMap[val1.Value.(string)].Type == Float && g.VariableMap[val2.Value.(string)].Type == Float:
+			sub := g.VariableMap[val2.Value.(string)].Value.(float64) - g.VariableMap[val1.Value.(string)].Value.(float64)
+			g.Push(StackElement{Type: Float, Value: sub})
+		default:
 			return errors.New("ERROR: cannot perform SUB_OP on different types")
 		}
 	// val1 is a variable and val2 is not
@@ -645,16 +666,14 @@ func (g *Gorth) Sub() error {
 			return fmt.Errorf("ERROR: variable %v has not been declared", val1.Value.(string))
 		}
 
-		if g.VariableMap[val1.Value.(string)].Type == val2.Type {
-			switch val2.Type {
-			case Int:
-				sub := g.VariableMap[val1.Value.(string)].Value.(int) - val2.Value.(int)
-				g.Push(StackElement{Type: Int, Value: sub})
-			case Float:
-				sub := g.VariableMap[val1.Value.(string)].Value.(float64) - val2.Value.(float64)
-				g.Push(StackElement{Type: Float, Value: sub})
-			}
-		} else {
+		switch {
+		case g.VariableMap[val1.Value.(string)].Type == Int && val2.Type == Int:
+			sub := g.VariableMap[val1.Value.(string)].Value.(int) - val2.Value.(int)
+			g.Push(StackElement{Type: Int, Value: sub})
+		case g.VariableMap[val1.Value.(string)].Type == Float && val2.Type == Float:
+			sub := g.VariableMap[val1.Value.(string)].Value.(float64) - val2.Value.(float64)
+			g.Push(StackElement{Type: Float, Value: sub})
+		default:
 			return errors.New("ERROR: cannot perform SUB_OP on different types")
 		}
 	// val2 is a variable and val1 is not
@@ -664,16 +683,15 @@ func (g *Gorth) Sub() error {
 		if !exists2 {
 			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
 		}
-		if g.VariableMap[val2.Value.(string)].Type == val1.Type {
-			switch val1.Type {
-			case Int:
-				sub := g.VariableMap[val2.Value.(string)].Value.(int) - val1.Value.(int)
-				g.Push(StackElement{Type: Int, Value: sub})
-			case Float:
-				sub := g.VariableMap[val2.Value.(string)].Value.(float64) - val1.Value.(float64)
-				g.Push(StackElement{Type: Float, Value: sub})
-			}
-		} else {
+
+		switch {
+		case g.VariableMap[val2.Value.(string)].Type == Int && val1.Type == Int:
+			sub := g.VariableMap[val2.Value.(string)].Value.(int) - val1.Value.(int)
+			g.Push(StackElement{Type: Int, Value: sub})
+		case g.VariableMap[val2.Value.(string)].Type == Float && val1.Type == Float:
+			sub := g.VariableMap[val2.Value.(string)].Value.(float64) - val1.Value.(float64)
+			g.Push(StackElement{Type: Float, Value: sub})
+		default:
 			return errors.New("ERROR: cannot perform SUB_OP on different types")
 		}
 	default:
