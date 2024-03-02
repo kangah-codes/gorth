@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"reflect"
@@ -443,113 +444,180 @@ func TestAdd(t *testing.T) {
 		})
 	}
 }
+
 func TestSub(t *testing.T) {
-	g := NewGorth(false, false)
-
-	// Test integer subtraction
-	g.ExecStack = append(g.ExecStack, StackElement{Type: Int, Value: 10})
-	g.ExecStack = append(g.ExecStack, StackElement{Type: Int, Value: 5})
-
-	err := g.Sub()
-	if err != nil {
-		t.Errorf("Unexpected error: %v", err)
+	testCases := []struct {
+		stack       []StackElement
+		variableMap map[string]Variable
+		expected    []StackElement
+		expectedErr error
+		title       string
+	}{
+		// Test integer subtraction
+		{
+			stack: []StackElement{
+				{Type: Int, Value: 10},
+				{Type: Int, Value: 5},
+			},
+			expected: []StackElement{
+				{Type: Int, Value: 5},
+			},
+			expectedErr: nil,
+			title:       "Test integer subtraction",
+		},
+		// Test float subtraction
+		{
+			stack: []StackElement{
+				{Type: Float, Value: 3.14},
+				{Type: Float, Value: 2.0},
+			},
+			expected: []StackElement{
+				{Type: Float, Value: 1.1400000000000001},
+			},
+			expectedErr: nil,
+			title:       "Test float subtraction",
+		},
+		// Test mixed number subtraction (int and float)
+		{
+			stack: []StackElement{
+				{Type: Int, Value: 5},
+				{Type: Float, Value: 2.5},
+			},
+			expected: []StackElement{
+				{Type: Float, Value: 2.5},
+			},
+			expectedErr: nil,
+			title:       "Test mixed number subtraction (int and float)",
+		},
+		// Test mixed number subtraction (float and int)
+		{
+			stack: []StackElement{
+				{Type: Float, Value: 2.5},
+				{Type: Int, Value: 5},
+			},
+			expected: []StackElement{
+				{Type: Float, Value: -2.5},
+			},
+			expectedErr: nil,
+			title:       "Test mixed number subtraction (float and int)",
+		},
+		// Test variable subtraction
+		{
+			stack: []StackElement{
+				{Type: Identifier, Value: "x"},
+				{Type: Identifier, Value: "y"},
+			},
+			variableMap: map[string]Variable{
+				"x": {Name: "x", Type: Int, Value: 10},
+				"y": {Name: "y", Type: Int, Value: 5},
+			},
+			expected: []StackElement{
+				{Type: Int, Value: 5},
+			},
+			expectedErr: nil,
+			title:       "Test variable subtraction",
+		},
+		// Test variable subtraction with undeclared variable
+		{
+			stack: []StackElement{
+				{Type: Identifier, Value: "x"},
+				{Type: Identifier, Value: "y"},
+			},
+			variableMap: map[string]Variable{
+				"x": {Name: "x", Type: Int, Value: 10},
+			},
+			expected:    []StackElement{},
+			expectedErr: fmt.Errorf("ERROR: variable y has not been declared"),
+			title:       "Test variable subtraction with undeclared variable",
+		},
+		// Test variable subtraction with different types
+		{
+			stack: []StackElement{
+				{Type: Identifier, Value: "x"},
+				{Type: Identifier, Value: "y"},
+			},
+			variableMap: map[string]Variable{
+				"x": {Name: "x", Type: Int, Value: 10},
+				"y": {Name: "y", Type: Float, Value: 2.5},
+			},
+			expected:    []StackElement{{Type: Float, Value: 7.5}},
+			expectedErr: nil,
+			title:       "Test variable subtraction with different types",
+		},
+		// Test variable subtraction with one variable and one non-variable
+		{
+			stack: []StackElement{
+				{Type: Identifier, Value: "x"},
+				{Type: Int, Value: 5},
+			},
+			variableMap: map[string]Variable{
+				"x": {Name: "x", Type: Int, Value: 10},
+			},
+			expected: []StackElement{
+				{Type: Int, Value: 5},
+			},
+			expectedErr: nil,
+			title:       "Test variable subtraction with one variable and one non-variable",
+		},
+		// Test variable subtraction with undeclared variable and non-variable
+		{
+			stack: []StackElement{
+				{Type: Identifier, Value: "x"},
+				{Type: Int, Value: 5},
+			},
+			variableMap: map[string]Variable{
+				"y": {Name: "y", Type: Int, Value: 10},
+			},
+			expected:    []StackElement{},
+			expectedErr: fmt.Errorf("ERROR: variable x has not been declared"),
+			title:       "Test variable subtraction with undeclared variable and non-variable",
+		},
+		// Test variable subtraction with different types (variable and non-variable)
+		{
+			stack: []StackElement{
+				{Type: Identifier, Value: "x"},
+				{Type: Float, Value: 2.5},
+			},
+			variableMap: map[string]Variable{
+				"x": {Name: "x", Type: Int, Value: 10},
+			},
+			expected:    []StackElement{{Type: Float, Value: 7.5}},
+			expectedErr: nil,
+			title:       "Test variable subtraction with different types (variable and non-variable)",
+		},
+		// Test variable subtraction with different types (non-variable and variable)
+		{
+			stack: []StackElement{
+				{Type: Int, Value: 5},
+				{Type: Identifier, Value: "x"},
+			},
+			variableMap: map[string]Variable{
+				"x": {Name: "x", Type: Float, Value: 2.5},
+			},
+			expected:    []StackElement{{Type: Float, Value: 2.5}},
+			expectedErr: errors.New("ERROR: cannot perform SUB_OP on different types"),
+			title:       "Test variable subtraction with different types (non-variable and variable)",
+		},
 	}
 
-	expectedStack := []StackElement{
-		{Type: Int, Value: 5},
-	}
-	if !reflect.DeepEqual(g.ExecStack, expectedStack) {
-		t.Errorf("Expected stack: %v, but got: %v", expectedStack, g.ExecStack)
-	}
+	for _, tc := range testCases {
+		t.Run(tc.title, func(t *testing.T) {
+			g := NewGorth(false, false)
+			g.ExecStack = tc.stack
+			g.VariableMap = tc.variableMap
 
-	// Test float subtraction
-	g.ExecStack = append(g.ExecStack, StackElement{Type: Float, Value: 3.14})
-	g.ExecStack = append(g.ExecStack, StackElement{Type: Float, Value: 2.71})
+			err := g.Sub()
+			if err != nil {
+				if tc.expectedErr == nil {
+					t.Errorf("Unexpected error: %v", err)
+				} else if err.Error() != tc.expectedErr.Error() {
+					t.Errorf("Expected error: %q, but got: %q", tc.expectedErr, err)
+				}
+			}
 
-	err = g.Sub()
-	if err != nil {
-		t.Errorf("Unexpected error: %v", err)
-	}
-
-	expectedStack = []StackElement{
-		{Type: Float, Value: 0.43},
-	}
-	if !reflect.DeepEqual(g.ExecStack, expectedStack) {
-		t.Errorf("Expected stack: %v, but got: %v", expectedStack, g.ExecStack)
-	}
-
-	// Test mixed number subtraction
-	g.ExecStack = append(g.ExecStack, StackElement{Type: Int, Value: 5})
-	g.ExecStack = append(g.ExecStack, StackElement{Type: Float, Value: 2.5})
-
-	err = g.Sub()
-	if err != nil {
-		t.Errorf("Unexpected error: %v", err)
-	}
-
-	expectedStack = []StackElement{
-		{Type: Float, Value: 2},
-	}
-	if !reflect.DeepEqual(g.ExecStack, expectedStack) {
-		t.Errorf("Expected stack: %v, but got: %v", expectedStack, g.ExecStack)
-	}
-
-	// Test variable subtraction
-	g.VariableMap["x"] = Variable{Name: "x", Type: Int, Value: 10}
-	g.VariableMap["y"] = Variable{Name: "y", Type: Int, Value: 5}
-
-	g.ExecStack = append(g.ExecStack, StackElement{Type: Identifier, Value: "x"})
-	g.ExecStack = append(g.ExecStack, StackElement{Type: Identifier, Value: "y"})
-
-	err = g.Sub()
-	if err != nil {
-		t.Errorf("Unexpected error: %v", err)
-	}
-
-	expectedStack = []StackElement{
-		{Type: Int, Value: 5},
-	}
-	if !reflect.DeepEqual(g.ExecStack, expectedStack) {
-		t.Errorf("Expected stack: %v, but got: %v", expectedStack, g.ExecStack)
-	}
-
-	// Test variable and non-variable subtraction
-	g.ExecStack = append(g.ExecStack, StackElement{Type: Identifier, Value: "x"})
-	g.ExecStack = append(g.ExecStack, StackElement{Type: Int, Value: 2})
-
-	err = g.Sub()
-	if err != nil {
-		t.Errorf("Unexpected error: %v", err)
-	}
-
-	expectedStack = []StackElement{
-		{Type: Int, Value: 3},
-	}
-	if !reflect.DeepEqual(g.ExecStack, expectedStack) {
-		t.Errorf("Expected stack: %v, but got: %v", expectedStack, g.ExecStack)
-	}
-
-	// Test subtraction with different types
-	g.ExecStack = append(g.ExecStack, StackElement{Type: Int, Value: 5})
-	g.ExecStack = append(g.ExecStack, StackElement{Type: Float, Value: 2.5})
-
-	err = g.Sub()
-	expectedErr := "ERROR: cannot perform SUB_OP on different types"
-	if err == nil {
-		t.Error("Expected error: ", expectedErr)
-	} else if err.Error() != expectedErr {
-		t.Errorf("Expected error: %q, but got: %q", expectedErr, err.Error())
-	}
-
-	// Test variable not declared
-	g.ExecStack = append(g.ExecStack, StackElement{Type: Identifier, Value: "z"})
-	g.ExecStack = append(g.ExecStack, StackElement{Type: Int, Value: 5})
-
-	err = g.Sub()
-	expectedErr = "ERROR: variable z has not been declared"
-	if err == nil {
-		t.Error("Expected error: ", expectedErr)
-	} else if err.Error() != expectedErr {
-		t.Errorf("Expected error: %q, but got: %q", expectedErr, err.Error())
+			if !reflect.DeepEqual(g.ExecStack, tc.expected) {
+				t.Errorf("Expected stack: %v, but got: %v", tc.expected, g.ExecStack)
+			}
+		})
 	}
 }
