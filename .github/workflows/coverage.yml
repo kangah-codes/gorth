@@ -31,9 +31,6 @@ jobs:
                   curl "https://img.shields.io/badge/Coverage-$COVERAGE%25-$COLOR" > badge.svg
 
             - name: Commit badge.svg
-              run: |
-                  git config --local user.email "action@github.com"
-                  git config --local user.name "GitHub Action"
-                  git add badge.svg
-                  git commit -m "chore: update code coverage" || echo "No changes to commit"
-                  git push
+              uses: stefanzweifel/git-auto-commit-action@v5
+              with:
+                  commit_message: "chore: update coverage badge"
