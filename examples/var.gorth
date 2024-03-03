@@ -1,4 +1,1 @@
-/x 2.5 def
-/y 2.5 def
-
-_x _y && print
+5 5.0 == print

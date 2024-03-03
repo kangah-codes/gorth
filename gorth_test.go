@@ -237,6 +237,80 @@ func TestDump(t *testing.T) {
 
 	// Similar procedure for other test cases
 }
+
+func TestDup(t *testing.T) {
+	var testCases = TestCase{
+		// Test duplicating an integer value
+		{
+			stack: []StackElement{
+				{Type: Int, Value: 10},
+			},
+			expected: []StackElement{
+				{Type: Int, Value: 10},
+				{Type: Int, Value: 10},
+			},
+			expectedErr: nil,
+			title:       "Test duplicating an integer value",
+		},
+		// Test duplicating a string value
+		{
+			stack: []StackElement{
+				{Type: String, Value: "Hello"},
+			},
+			expected: []StackElement{
+				{Type: String, Value: "Hello"},
+				{Type: String, Value: "Hello"},
+			},
+			expectedErr: nil,
+			title:       "Test duplicating a string value",
+		},
+		// Test duplicating a float value
+		{
+			stack: []StackElement{
+				{Type: Float, Value: 3.14},
+			},
+			expected: []StackElement{
+				{Type: Float, Value: 3.14},
+				{Type: Float, Value: 3.14},
+			},
+			expectedErr: nil,
+			title:       "Test duplicating a float value",
+		},
+		// Test duplicating a variable
+		{
+			stack: []StackElement{
+				{Type: Identifier, Value: "x"},
+			},
+			variableMap: map[string]Variable{
+				"x": {Name: "x", Type: Int, Value: 10},
+			},
+			expected: []StackElement{
+				{Type: Identifier, Value: "x"},
+				{Type: Identifier, Value: "x"},
+			},
+			expectedErr: nil,
+			title:       "Test duplicating a variable",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.title, func(t *testing.T) {
+			g := NewGorth(false, false)
+			g.ExecStack = tc.stack
+			g.VariableMap = tc.variableMap
+
+			err := g.Dup()
+			if err != tc.expectedErr {
+				t.Errorf("Expected error: %v, but got: %v", tc.expectedErr, err)
+			}
+
+			if !reflect.DeepEqual(g.ExecStack, tc.expected) {
+				t.Errorf("Expected stack: %v, but got: %v", tc.expected, g.ExecStack)
+			}
+		})
+	}
+}
+
 func TestRot(t *testing.T) {
 	g := NewGorth(false, false)
 
@@ -1772,6 +1846,224 @@ func TestOr(t *testing.T) {
 			g.VariableMap = tc.variableMap
 
 			err := g.Or()
+			if err != nil {
+				if tc.expectedErr == nil {
+					t.Errorf("Unexpected error: %v", err)
+				} else if err.Error() != tc.expectedErr.Error() {
+					t.Errorf("Expected error: %q, but got: %q", tc.expectedErr, err)
+				}
+			}
+
+			if !reflect.DeepEqual(g.ExecStack, tc.expected) {
+				t.Errorf("Expected stack: %v, but got: %v", tc.expected, g.ExecStack)
+			}
+		})
+	}
+}
+
+func TestNot(t *testing.T) {
+	var testCases = TestCase{
+		// Test integer NOT
+		{
+			stack: []StackElement{
+				{Type: Int, Value: 5},
+			},
+			expected: []StackElement{
+				{Type: Int, Value: -5},
+			},
+			expectedErr: nil,
+			title:       "Test integer NOT",
+		},
+		// Test float NOT
+		{
+			stack: []StackElement{
+				{Type: Float, Value: 3.14},
+			},
+			expected: []StackElement{
+				{Type: Float, Value: -3.14},
+			},
+			expectedErr: nil,
+			title:       "Test float NOT",
+		},
+		// Test mixed number NOT (int and float)
+		{
+			stack: []StackElement{
+				{Type: Int, Value: 5},
+				{Type: Float, Value: 2.5},
+			},
+			expected: []StackElement{
+				{Type: Int, Value: 5},
+				{Type: Float, Value: -2.5},
+			},
+			expectedErr: nil,
+			title:       "Test mixed number NOT (int and float)",
+		},
+		// Test mixed number NOT (float and int)
+		{
+			stack: []StackElement{
+				{Type: Float, Value: 2.5},
+				{Type: Int, Value: 5},
+			},
+			expected: []StackElement{
+				{Type: Float, Value: 2.5},
+				{Type: Int, Value: -5},
+			},
+			expectedErr: nil,
+			title:       "Test mixed number NOT (float and int)",
+		},
+		// Test variable NOT
+		{
+			stack: []StackElement{
+				{Type: Identifier, Value: "x"},
+			},
+			variableMap: map[string]Variable{
+				"x": {Name: "x", Type: Int, Value: 5},
+			},
+			expected: []StackElement{
+				{Type: Identifier, Value: "x"},
+			},
+			expectedErr: nil,
+			title:       "Test variable NOT",
+		},
+		// Test variable NOT with undeclared variable
+		{
+			stack: []StackElement{
+				{Type: Identifier, Value: "x"},
+			},
+			variableMap: map[string]Variable{},
+			expected:    []StackElement{},
+			expectedErr: fmt.Errorf("ERROR: variable x has not been declared"),
+			title:       "Test variable NOT with undeclared variable",
+		},
+		// Test boolean NOT (true)
+		{
+			stack: []StackElement{
+				{Type: Bool, Value: true},
+			},
+			expected: []StackElement{
+				{Type: Bool, Value: false},
+			},
+			expectedErr: nil,
+			title:       "Test boolean NOT (true)",
+		},
+		// Test boolean NOT (false)
+		{
+			stack: []StackElement{
+				{Type: Bool, Value: false},
+			},
+			expected: []StackElement{
+				{Type: Bool, Value: true},
+			},
+			expectedErr: nil,
+			title:       "Test boolean NOT (false)",
+		},
+		// Test boolean NOT (true and false)
+		{
+			stack: []StackElement{
+				{Type: Bool, Value: true},
+			},
+			expected:    []StackElement{{Type: Bool, Value: false}},
+			expectedErr: nil,
+			title:       "Test boolean NOT (true)",
+		}}
+
+	for _, tc := range testCases {
+		t.Run(tc.title, func(t *testing.T) {
+			g := NewGorth(false, false)
+			g.ExecStack = tc.stack
+			g.VariableMap = tc.variableMap
+
+			err := g.Not()
+			if err != nil {
+				if tc.expectedErr == nil {
+					t.Errorf("Unexpected error: %v", err)
+				} else if err.Error() != tc.expectedErr.Error() {
+					t.Errorf("Expected error: %q, but got: %q", tc.expectedErr, err)
+				}
+			}
+
+			if !reflect.DeepEqual(g.ExecStack, tc.expected) {
+				t.Errorf("Expected stack: %v, but got: %v", tc.expected, g.ExecStack)
+			}
+		})
+	}
+}
+
+func TestEqual(t *testing.T) {
+	var testCases = TestCase{
+		// Test integer equality
+		{
+			stack: []StackElement{
+				{Type: Int, Value: 5},
+				{Type: Int, Value: 5},
+			},
+			expected: []StackElement{
+				{Type: Bool, Value: true},
+			},
+			expectedErr: nil,
+			title:       "Test integer equality",
+		},
+		// Test float equality
+		{
+			stack: []StackElement{
+				{Type: Float, Value: 3.14},
+				{Type: Float, Value: 3.14},
+			},
+			expected: []StackElement{
+				{Type: Bool, Value: true},
+			},
+			expectedErr: nil,
+			title:       "Test float equality",
+		},
+		// Test mixed number equality (int and float)
+		{
+			stack: []StackElement{
+				{Type: Int, Value: 5},
+				{Type: Float, Value: 5.0},
+			},
+			expected: []StackElement{
+				{Type: Bool, Value: true},
+			},
+			expectedErr: nil,
+			title:       "Test mixed number equality (int and float)",
+		},
+		// Test mixed number equality (float and int)
+		{
+			stack: []StackElement{
+				{Type: Float, Value: 5.0},
+				{Type: Int, Value: 5},
+			},
+			expected: []StackElement{
+				{Type: Bool, Value: true},
+			},
+			expectedErr: nil,
+			title:       "Test mixed number equality (float and int)",
+		},
+		// Test variable equality
+		{
+			stack: []StackElement{
+				{Type: Identifier, Value: "x"},
+				{Type: Identifier, Value: "y"},
+			},
+			variableMap: map[string]Variable{
+				"x": {Name: "x", Type: Int, Value: 5},
+				"y": {Name: "y", Type: Int, Value: 5},
+			},
+			expected: []StackElement{
+				{Type: Bool, Value: true},
+			},
+			expectedErr: nil,
+			title:       "Test variable equality",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.title, func(t *testing.T) {
+			g := NewGorth(false, false)
+			g.ExecStack = tc.stack
+			g.VariableMap = tc.variableMap
+
+			err := g.Equal()
 			if err != nil {
 				if tc.expectedErr == nil {
 					t.Errorf("Unexpected error: %v", err)
