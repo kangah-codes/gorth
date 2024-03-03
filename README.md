@@ -17,6 +17,20 @@ This project is a stack-based programming language implemented in Go. It provide
 -   Error handling (Coming soon!)
 -   Memory management (Coming soon!)
 
+## Exhaustive List of operations
+
+-   Push (Primitive Op) - Pushes a value onto the stack
+-   Pop (Primitive Op) - Pops a value off the stack
+-   Swap (swap) - Swaps the top two values on the stack
+-   Dup (dup) - Duplicates the top value on the stack
+-   Rot (rot) - Rotates the top three values on the stack
+-   Drop (rot) - Drops the top value off the stack
+-   Print (print) - Prints the top value on the stack
+-   Dump (dump) - Dumps the top value on the stack
+-   Modulo (%) - Supports int only (a b %) cos I'm lazy
+-   Increment (++) - Increments the top value on the stack by 1
+-   Decrement (--) - Decrements the top value on the stack by 1
+
 ## Usage
 
 Have go installed, and run `go run gorth.go`. To test, run `go test`.

@@ -471,7 +471,7 @@ func (g *Gorth) Print() error {
 		}
 
 		switch g.VariableMap[val.Value.(string)].Type {
-		case Int, String, Bool:
+		case Int, String, Bool, Float:
 			fmt.Println(g.VariableMap[val.Value.(string)].Value)
 		}
 	default:
@@ -753,6 +753,13 @@ func (g *Gorth) Mul() error {
 	case val1.Type == Float && val2.Type == Float:
 		mul := val1.Value.(float64) * val2.Value.(float64)
 		g.Push(StackElement{Type: Float, Value: mul})
+	// one is float and the other is an int
+	case val1.Type == Int && val2.Type == Float:
+		mul := float64(val1.Value.(int)) * val2.Value.(float64)
+		g.Push(StackElement{Type: Float, Value: mul})
+	case val1.Type == Float && val2.Type == Int:
+		mul := val1.Value.(float64) * float64(val2.Value.(int))
+		g.Push(StackElement{Type: Float, Value: mul})
 	// variable multiplication
 	case val1.Type == Identifier && val2.Type == Identifier:
 		_, exists1 := g.VariableMap[val1.Value.(string)]
@@ -766,36 +773,38 @@ func (g *Gorth) Mul() error {
 			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
 		}
 
-		if g.VariableMap[val1.Value.(string)].Type == g.VariableMap[val2.Value.(string)].Type {
-			switch g.VariableMap[val1.Value.(string)].Type {
-			case Int:
-				mul := g.VariableMap[val1.Value.(string)].Value.(int) * g.VariableMap[val2.Value.(string)].Value.(int)
-				g.Push(StackElement{Type: Int, Value: mul})
-			case Float:
-				mul := g.VariableMap[val1.Value.(string)].Value.(float64) * g.VariableMap[val2.Value.(string)].Value.(float64)
-				g.Push(StackElement{Type: Float, Value: mul})
+		switch {
+		case g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == Int:
+			mul := g.VariableMap[val1.Value.(string)].Value.(int) * g.VariableMap[val2.Value.(string)].Value.(int)
+			g.Push(StackElement{Type: Int, Value: mul})
+		case g.VariableMap[val1.Value.(string)].Type == Float && g.VariableMap[val2.Value.(string)].Type == Float:
+			mul := g.VariableMap[val1.Value.(string)].Value.(float64) * g.VariableMap[val2.Value.(string)].Value.(float64)
+			g.Push(StackElement{Type: Float, Value: mul})
+		case g.VariableMap[val1.Value.(string)].Type == String && g.VariableMap[val2.Value.(string)].Type == Int:
+			str := g.VariableMap[val1.Value.(string)].Value.(string)
+			num := g.VariableMap[val2.Value.(string)].Value.(int)
+			var concat string
+			for i := 0; i < num; i++ {
+				concat += str
 			}
-		} else {
-			// we can still multiply strings with integers
-			if g.VariableMap[val1.Value.(string)].Type == String && g.VariableMap[val2.Value.(string)].Type == Int {
-				str := g.VariableMap[val1.Value.(string)].Value.(string)
-				num := g.VariableMap[val2.Value.(string)].Value.(int)
-				var concat string
-				for i := 0; i < num; i++ {
-					concat += str
-				}
-				g.Push(StackElement{Type: String, Value: concat})
-			} else if g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == String {
-				str := g.VariableMap[val2.Value.(string)].Value.(string)
-				num := g.VariableMap[val1.Value.(string)].Value.(int)
-				var concat string
-				for i := 0; i < num; i++ {
-					concat += str
-				}
-				g.Push(StackElement{Type: String, Value: concat})
-			} else {
-				return errors.New("ERROR: cannot perform MUL_OP on different types")
+			g.Push(StackElement{Type: String, Value: concat})
+		case g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == String:
+			str := g.VariableMap[val2.Value.(string)].Value.(string)
+			num := g.VariableMap[val1.Value.(string)].Value.(int)
+			var concat string
+			for i := 0; i < num; i++ {
+				concat += str
 			}
+			g.Push(StackElement{Type: String, Value: concat})
+		// one is a float and one is an int
+		case g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == Float:
+			mul := float64(g.VariableMap[val1.Value.(string)].Value.(int)) * g.VariableMap[val2.Value.(string)].Value.(float64)
+			g.Push(StackElement{Type: Float, Value: mul})
+		case g.VariableMap[val1.Value.(string)].Type == Float && g.VariableMap[val2.Value.(string)].Type == Int:
+			mul := g.VariableMap[val1.Value.(string)].Value.(float64) * float64(g.VariableMap[val2.Value.(string)].Value.(int))
+			g.Push(StackElement{Type: Float, Value: mul})
+		default:
+			return errors.New("ERROR: cannot perform MUL_OP on different types")
 		}
 	// val1 is a variable and val2 is not
 	case val1.Type == Identifier && val2.Type != Identifier:
@@ -805,36 +814,38 @@ func (g *Gorth) Mul() error {
 			return fmt.Errorf("ERROR: variable %v has not been declared", val1.Value.(string))
 		}
 
-		if g.VariableMap[val1.Value.(string)].Type == val2.Type {
-			switch val2.Type {
-			case Int:
-				mul := g.VariableMap[val1.Value.(string)].Value.(int) * val2.Value.(int)
-				g.Push(StackElement{Type: Int, Value: mul})
-			case Float:
-				mul := g.VariableMap[val1.Value.(string)].Value.(float64) * val2.Value.(float64)
-				g.Push(StackElement{Type: Float, Value: mul})
+		switch {
+		case g.VariableMap[val1.Value.(string)].Type == Int && val2.Type == Int:
+			mul := g.VariableMap[val1.Value.(string)].Value.(int) * val2.Value.(int)
+			g.Push(StackElement{Type: Int, Value: mul})
+		case g.VariableMap[val1.Value.(string)].Type == Float && val2.Type == Float:
+			mul := g.VariableMap[val1.Value.(string)].Value.(float64) * val2.Value.(float64)
+			g.Push(StackElement{Type: Float, Value: mul})
+		case g.VariableMap[val1.Value.(string)].Type == String && val2.Type == Int:
+			str := g.VariableMap[val1.Value.(string)].Value.(string)
+			num := val2.Value.(int)
+			var concat string
+			for i := 0; i < num; i++ {
+				concat += str
 			}
-		} else {
-			// we can still multiply strings with integers
-			if g.VariableMap[val1.Value.(string)].Type == String && val2.Type == Int {
-				str := g.VariableMap[val1.Value.(string)].Value.(string)
-				num := val2.Value.(int)
-				var concat string
-				for i := 0; i < num; i++ {
-					concat += str
-				}
-				g.Push(StackElement{Type: String, Value: concat})
-			} else if g.VariableMap[val1.Value.(string)].Type == Int && val2.Type == String {
-				str := val2.Value.(string)
-				num := g.VariableMap[val1.Value.(string)].Value.(int)
-				var concat string
-				for i := 0; i < num; i++ {
-					concat += str
-				}
-				g.Push(StackElement{Type: String, Value: concat})
-			} else {
-				return errors.New("ERROR: cannot perform MUL_OP on different types -> val1")
+			g.Push(StackElement{Type: String, Value: concat})
+		case g.VariableMap[val1.Value.(string)].Type == Int && val2.Type == String:
+			str := val2.Value.(string)
+			num := g.VariableMap[val1.Value.(string)].Value.(int)
+			var concat string
+			for i := 0; i < num; i++ {
+				concat += str
 			}
+			g.Push(StackElement{Type: String, Value: concat})
+		// one is a float and one is an int
+		case g.VariableMap[val1.Value.(string)].Type == Int && val2.Type == Float:
+			mul := float64(g.VariableMap[val1.Value.(string)].Value.(int)) * val2.Value.(float64)
+			g.Push(StackElement{Type: Float, Value: mul})
+		case g.VariableMap[val1.Value.(string)].Type == Float && val2.Type == Int:
+			mul := g.VariableMap[val1.Value.(string)].Value.(float64) * float64(val2.Value.(int))
+			g.Push(StackElement{Type: Float, Value: mul})
+		default:
+			return errors.New("ERROR: cannot perform MUL_OP on different types")
 		}
 	// val2 is a variable and val1 is not
 	case val1.Type != Identifier && val2.Type == Identifier:
@@ -844,36 +855,38 @@ func (g *Gorth) Mul() error {
 			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
 		}
 
-		if g.VariableMap[val2.Value.(string)].Type == val1.Type {
-			switch val1.Type {
-			case Int:
-				mul := g.VariableMap[val2.Value.(string)].Value.(int) * val1.Value.(int)
-				g.Push(StackElement{Type: Int, Value: mul})
-			case Float:
-				mul := g.VariableMap[val2.Value.(string)].Value.(float64) * val1.Value.(float64)
-				g.Push(StackElement{Type: Float, Value: mul})
+		switch {
+		case g.VariableMap[val2.Value.(string)].Type == Int && val1.Type == Int:
+			mul := g.VariableMap[val2.Value.(string)].Value.(int) * val1.Value.(int)
+			g.Push(StackElement{Type: Int, Value: mul})
+		case g.VariableMap[val2.Value.(string)].Type == Float && val1.Type == Float:
+			mul := g.VariableMap[val2.Value.(string)].Value.(float64) * val1.Value.(float64)
+			g.Push(StackElement{Type: Float, Value: mul})
+		case g.VariableMap[val2.Value.(string)].Type == String && val1.Type == Int:
+			str := g.VariableMap[val2.Value.(string)].Value.(string)
+			num := val1.Value.(int)
+			var concat string
+			for i := 0; i < num; i++ {
+				concat += str
 			}
-		} else {
-			// we can still multiply strings with integers
-			if g.VariableMap[val2.Value.(string)].Type == String && val1.Type == Int {
-				str := g.VariableMap[val2.Value.(string)].Value.(string)
-				num := val1.Value.(int)
-				var concat string
-				for i := 0; i < num; i++ {
-					concat += str
-				}
-				g.Push(StackElement{Type: String, Value: concat})
-			} else if g.VariableMap[val2.Value.(string)].Type == Int && val1.Type == String {
-				str := val1.Value.(string)
-				num := g.VariableMap[val2.Value.(string)].Value.(int)
-				var concat string
-				for i := 0; i < num; i++ {
-					concat += str
-				}
-				g.Push(StackElement{Type: String, Value: concat})
-			} else {
-				return errors.New("ERROR: cannot perform MUL_OP on different types -> val2")
+			g.Push(StackElement{Type: String, Value: concat})
+		case g.VariableMap[val2.Value.(string)].Type == Int && val1.Type == String:
+			str := val1.Value.(string)
+			num := g.VariableMap[val2.Value.(string)].Value.(int)
+			var concat string
+			for i := 0; i < num; i++ {
+				concat += str
 			}
+			g.Push(StackElement{Type: String, Value: concat})
+		// one is a float and one is an int
+		case g.VariableMap[val2.Value.(string)].Type == Int && val1.Type == Float:
+			mul := float64(g.VariableMap[val2.Value.(string)].Value.(int)) * val1.Value.(float64)
+			g.Push(StackElement{Type: Float, Value: mul})
+		case g.VariableMap[val2.Value.(string)].Type == Float && val1.Type == Int:
+			mul := g.VariableMap[val2.Value.(string)].Value.(float64) * float64(val1.Value.(int))
+			g.Push(StackElement{Type: Float, Value: mul})
+		default:
+			return errors.New("ERROR: cannot perform MUL_OP on different types")
 		}
 	// mixed type multiplication
 	case (val1.Type == Int && val2.Type == Float) || (val1.Type == Float && val2.Type == Int):
@@ -903,6 +916,13 @@ func (g *Gorth) Div() error {
 	case val1.Type == Float && val2.Type == Float:
 		div := val2.Value.(float64) / val1.Value.(float64)
 		g.Push(StackElement{Type: Float, Value: div})
+	// one is float and the other is an int
+	case val1.Type == Int && val2.Type == Float:
+		div := val2.Value.(float64) / float64(val1.Value.(int))
+		g.Push(StackElement{Type: Float, Value: div})
+	case val1.Type == Float && val2.Type == Int:
+		div := float64(val2.Value.(int)) / val1.Value.(float64)
+		g.Push(StackElement{Type: Float, Value: div})
 	// variables
 	case val1.Type == Identifier && val2.Type == Identifier:
 		_, exists1 := g.VariableMap[val1.Value.(string)]
@@ -916,16 +936,21 @@ func (g *Gorth) Div() error {
 			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
 		}
 
-		if g.VariableMap[val1.Value.(string)].Type == g.VariableMap[val2.Value.(string)].Type {
-			switch g.VariableMap[val1.Value.(string)].Type {
-			case Int:
-				div := g.VariableMap[val2.Value.(string)].Value.(int) / g.VariableMap[val1.Value.(string)].Value.(int)
-				g.Push(StackElement{Type: Int, Value: div})
-			case Float:
-				div := g.VariableMap[val2.Value.(string)].Value.(float64) / g.VariableMap[val1.Value.(string)].Value.(float64)
-				g.Push(StackElement{Type: Float, Value: div})
-			}
-		} else {
+		switch {
+		case g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == Int:
+			div := g.VariableMap[val2.Value.(string)].Value.(int) / g.VariableMap[val1.Value.(string)].Value.(int)
+			g.Push(StackElement{Type: Int, Value: div})
+		case g.VariableMap[val1.Value.(string)].Type == Float && g.VariableMap[val2.Value.(string)].Type == Float:
+			div := g.VariableMap[val2.Value.(string)].Value.(float64) / g.VariableMap[val1.Value.(string)].Value.(float64)
+			g.Push(StackElement{Type: Float, Value: div})
+		// one is an int and the other is a float
+		case g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == Float:
+			div := g.VariableMap[val2.Value.(string)].Value.(float64) / float64(g.VariableMap[val1.Value.(string)].Value.(int))
+			g.Push(StackElement{Type: Float, Value: div})
+		case g.VariableMap[val1.Value.(string)].Type == Float && g.VariableMap[val2.Value.(string)].Type == Int:
+			div := float64(g.VariableMap[val2.Value.(string)].Value.(int)) / g.VariableMap[val1.Value.(string)].Value.(float64)
+			g.Push(StackElement{Type: Float, Value: div})
+		default:
 			return errors.New("ERROR: cannot perform DIV_OP on different types")
 		}
 	// val1 is a variable and val2 is not
@@ -941,16 +966,21 @@ func (g *Gorth) Div() error {
 			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
 		}
 
-		if g.VariableMap[val1.Value.(string)].Type == val2.Type {
-			switch val2.Type {
-			case Int:
-				div := g.VariableMap[val1.Value.(string)].Value.(int) / val2.Value.(int)
-				g.Push(StackElement{Type: Int, Value: div})
-			case Float:
-				div := g.VariableMap[val1.Value.(string)].Value.(float64) / val2.Value.(float64)
-				g.Push(StackElement{Type: Float, Value: div})
-			}
-		} else {
+		switch {
+		case g.VariableMap[val1.Value.(string)].Type == Int && val2.Type == Int:
+			div := val2.Value.(int) / g.VariableMap[val1.Value.(string)].Value.(int)
+			g.Push(StackElement{Type: Int, Value: div})
+		case g.VariableMap[val1.Value.(string)].Type == Float && val2.Type == Float:
+			div := val2.Value.(float64) / g.VariableMap[val1.Value.(string)].Value.(float64)
+			g.Push(StackElement{Type: Float, Value: div})
+		// one is an int and the other is a float
+		case g.VariableMap[val1.Value.(string)].Type == Int && val2.Type == Float:
+			div := val2.Value.(float64) / float64(g.VariableMap[val1.Value.(string)].Value.(int))
+			g.Push(StackElement{Type: Float, Value: div})
+		case g.VariableMap[val1.Value.(string)].Type == Float && val2.Type == Int:
+			div := g.VariableMap[val1.Value.(string)].Value.(float64) / float64(val2.Value.(int))
+			g.Push(StackElement{Type: Float, Value: div})
+		default:
 			return errors.New("ERROR: cannot perform DIV_OP on different types")
 		}
 	// val2 is a variable and val1 is not
@@ -966,16 +996,20 @@ func (g *Gorth) Div() error {
 			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
 		}
 
-		if g.VariableMap[val2.Value.(string)].Type == val1.Type {
-			switch val1.Type {
-			case Int:
-				div := g.VariableMap[val2.Value.(string)].Value.(int) / val1.Value.(int)
-				g.Push(StackElement{Type: Int, Value: div})
-			case Float:
-				div := g.VariableMap[val2.Value.(string)].Value.(float64) / val1.Value.(float64)
-				g.Push(StackElement{Type: Float, Value: div})
-			}
-		} else {
+		switch {
+		case g.VariableMap[val2.Value.(string)].Type == Int && val1.Type == Int:
+			div := g.VariableMap[val2.Value.(string)].Value.(int) / val1.Value.(int)
+			g.Push(StackElement{Type: Int, Value: div})
+		case g.VariableMap[val2.Value.(string)].Type == Float && val1.Type == Float:
+			div := g.VariableMap[val2.Value.(string)].Value.(float64) / val1.Value.(float64)
+			g.Push(StackElement{Type: Float, Value: div})
+		case g.VariableMap[val2.Value.(string)].Type == Int && val1.Type == Float:
+			div := float64(g.VariableMap[val2.Value.(string)].Value.(int)) / val1.Value.(float64)
+			g.Push(StackElement{Type: Float, Value: div})
+		case g.VariableMap[val2.Value.(string)].Type == Float && val1.Type == Int:
+			div := g.VariableMap[val2.Value.(string)].Value.(float64) / float64(val1.Value.(int))
+			g.Push(StackElement{Type: Float, Value: div})
+		default:
 			return errors.New("ERROR: cannot perform DIV_OP on different types")
 		}
 	default:
@@ -996,6 +1030,9 @@ func (g *Gorth) Mod() error {
 	switch {
 	// integer modulo
 	case val1.Type == Int && val2.Type == Int:
+		if val1.Value.(int) == 0 {
+			return errors.New("ERROR: cannot divide by zero")
+		}
 		mod := val2.Value.(int) % val1.Value.(int)
 		g.Push(StackElement{Type: Int, Value: mod})
 	// variables
@@ -1011,15 +1048,32 @@ func (g *Gorth) Mod() error {
 			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
 		}
 
-		if g.VariableMap[val1.Value.(string)].Type == g.VariableMap[val2.Value.(string)].Type {
-			switch g.VariableMap[val1.Value.(string)].Type {
-			case Int:
-				mod := g.VariableMap[val2.Value.(string)].Value.(int) % g.VariableMap[val1.Value.(string)].Value.(int)
-				g.Push(StackElement{Type: Int, Value: mod})
-			default:
-				return errors.New("ERROR: cannot perform MOD_OP on different types")
+		switch {
+		case g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == Int:
+			if g.VariableMap[val1.Value.(string)].Value.(int) == 0 {
+				return errors.New("ERROR: cannot divide by zero")
 			}
-		} else {
+			mod := g.VariableMap[val2.Value.(string)].Value.(int) % g.VariableMap[val1.Value.(string)].Value.(int)
+			g.Push(StackElement{Type: Int, Value: mod})
+		default:
+			return errors.New("ERROR: cannot perform MOD_OP on different types")
+		}
+	// one is a variable and the other is not
+	case val1.Type == Identifier && val2.Type != Identifier:
+		_, exists1 := g.VariableMap[val1.Value.(string)]
+
+		if !exists1 {
+			return fmt.Errorf("ERROR: variable %v has not been declared", val1.Value.(string))
+		}
+
+		switch {
+		case g.VariableMap[val1.Value.(string)].Type == Int && val2.Type == Int:
+			if val1.Value.(int) == 0 {
+				return errors.New("ERROR: cannot divide by zero")
+			}
+			mod := val2.Value.(int) % g.VariableMap[val1.Value.(string)].Value.(int)
+			g.Push(StackElement{Type: Int, Value: mod})
+		default:
 			return errors.New("ERROR: cannot perform MOD_OP on different types")
 		}
 	default:
@@ -1047,7 +1101,10 @@ func (g *Gorth) Exp() error {
 		exp := math.Pow(val2.Value.(float64), val1.Value.(float64))
 		g.Push(StackElement{Type: Float, Value: exp})
 	// mixed type exponentiation
-	case (val1.Type == Int && val2.Type == Float) || (val1.Type == Float && val2.Type == Int):
+	case val1.Type == Int && val2.Type == Float:
+		exp := math.Pow(val2.Value.(float64), float64(val1.Value.(int)))
+		g.Push(StackElement{Type: Float, Value: exp})
+	case val1.Type == Float && val2.Type == Int:
 		exp := math.Pow(float64(val2.Value.(int)), val1.Value.(float64))
 		g.Push(StackElement{Type: Float, Value: exp})
 	// variables
@@ -1063,16 +1120,21 @@ func (g *Gorth) Exp() error {
 			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
 		}
 
-		if g.VariableMap[val1.Value.(string)].Type == g.VariableMap[val2.Value.(string)].Type {
-			switch g.VariableMap[val1.Value.(string)].Type {
-			case Int:
-				exp := int(math.Pow(float64(g.VariableMap[val2.Value.(string)].Value.(int)), float64(g.VariableMap[val1.Value.(string)].Value.(int))))
-				g.Push(StackElement{Type: Int, Value: exp})
-			case Float:
-				exp := math.Pow(g.VariableMap[val2.Value.(string)].Value.(float64), g.VariableMap[val1.Value.(string)].Value.(float64))
-				g.Push(StackElement{Type: Float, Value: exp})
-			}
-		} else {
+		switch {
+		case g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == Int:
+			exp := int(math.Pow(float64(g.VariableMap[val2.Value.(string)].Value.(int)), float64(g.VariableMap[val1.Value.(string)].Value.(int))))
+			g.Push(StackElement{Type: Int, Value: exp})
+		case g.VariableMap[val1.Value.(string)].Type == Float && g.VariableMap[val2.Value.(string)].Type == Float:
+			exp := math.Pow(g.VariableMap[val2.Value.(string)].Value.(float64), g.VariableMap[val1.Value.(string)].Value.(float64))
+			g.Push(StackElement{Type: Float, Value: exp})
+		// one is an int and the other is a float
+		case g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == Float:
+			exp := math.Pow(float64(g.VariableMap[val2.Value.(string)].Value.(int)), g.VariableMap[val1.Value.(string)].Value.(float64))
+			g.Push(StackElement{Type: Float, Value: exp})
+		case g.VariableMap[val1.Value.(string)].Type == Float && g.VariableMap[val2.Value.(string)].Type == Int:
+			exp := math.Pow(g.VariableMap[val2.Value.(string)].Value.(float64), float64(g.VariableMap[val1.Value.(string)].Value.(int)))
+			g.Push(StackElement{Type: Float, Value: exp})
+		default:
 			return errors.New("ERROR: cannot perform EXP_OP on different types")
 		}
 	// val1 is a variable and val2 is not
@@ -1083,16 +1145,21 @@ func (g *Gorth) Exp() error {
 			return fmt.Errorf("ERROR: variable %v has not been declared", val1.Value.(string))
 		}
 
-		if g.VariableMap[val1.Value.(string)].Type == val2.Type {
-			switch val2.Type {
-			case Int:
-				exp := int(math.Pow(float64(val2.Value.(int)), float64(g.VariableMap[val1.Value.(string)].Value.(int))))
-				g.Push(StackElement{Type: Int, Value: exp})
-			case Float:
-				exp := math.Pow(float64(val2.Value.(int)), g.VariableMap[val1.Value.(string)].Value.(float64))
-				g.Push(StackElement{Type: Float, Value: exp})
-			}
-		} else {
+		switch {
+		case g.VariableMap[val1.Value.(string)].Type == Int && val2.Type == Int:
+			exp := int(math.Pow(float64(val2.Value.(int)), float64(g.VariableMap[val1.Value.(string)].Value.(int))))
+			g.Push(StackElement{Type: Int, Value: exp})
+		case g.VariableMap[val1.Value.(string)].Type == Float && val2.Type == Float:
+			exp := math.Pow(val2.Value.(float64), g.VariableMap[val1.Value.(string)].Value.(float64))
+			g.Push(StackElement{Type: Float, Value: exp})
+		// one is an int and the other is a float
+		case g.VariableMap[val1.Value.(string)].Type == Int && val2.Type == Float:
+			exp := math.Pow(float64(val2.Value.(int)), g.VariableMap[val1.Value.(string)].Value.(float64))
+			g.Push(StackElement{Type: Float, Value: exp})
+		case g.VariableMap[val1.Value.(string)].Type == Float && val2.Type == Int:
+			exp := math.Pow(val2.Value.(float64), float64(g.VariableMap[val1.Value.(string)].Value.(int)))
+			g.Push(StackElement{Type: Float, Value: exp})
+		default:
 			return errors.New("ERROR: cannot perform EXP_OP on different types")
 		}
 	// val2 is a variable and val1 is not
@@ -1103,22 +1170,23 @@ func (g *Gorth) Exp() error {
 			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
 		}
 
-		if g.VariableMap[val2.Value.(string)].Type == val1.Type {
-			switch val1.Type {
-			case Int:
-				exp := int(math.Pow(float64(g.VariableMap[val2.Value.(string)].Value.(int)), float64(val1.Value.(int))))
-				g.Push(StackElement{Type: Int, Value: exp})
-			case Float:
-				exp := math.Pow(g.VariableMap[val2.Value.(string)].Value.(float64), float64(val1.Value.(int)))
-				g.Push(StackElement{Type: Float, Value: exp})
-			}
-		} else {
+		switch {
+		case g.VariableMap[val2.Value.(string)].Type == Int && val1.Type == Int:
+			exp := int(math.Pow(float64(g.VariableMap[val2.Value.(string)].Value.(int)), float64(val1.Value.(int))))
+			g.Push(StackElement{Type: Int, Value: exp})
+		case g.VariableMap[val2.Value.(string)].Type == Float && val1.Type == Float:
+			exp := math.Pow(g.VariableMap[val2.Value.(string)].Value.(float64), val1.Value.(float64))
+			g.Push(StackElement{Type: Float, Value: exp})
+		// one is an int and the other is a float
+		case g.VariableMap[val2.Value.(string)].Type == Int && val1.Type == Float:
+			exp := math.Pow(float64(g.VariableMap[val2.Value.(string)].Value.(int)), val1.Value.(float64))
+			g.Push(StackElement{Type: Float, Value: exp})
+		case g.VariableMap[val2.Value.(string)].Type == Float && val1.Type == Int:
+			exp := math.Pow(g.VariableMap[val2.Value.(string)].Value.(float64), float64(val1.Value.(int)))
+			g.Push(StackElement{Type: Float, Value: exp})
+		default:
 			return errors.New("ERROR: cannot perform EXP_OP on different types")
 		}
-	// mixed type exponentiation
-	case (val1.Type == Int && val2.Type == Float) || (val1.Type == Float && val2.Type == Int):
-		exp := math.Pow(float64(val2.Value.(int)), val1.Value.(float64))
-		g.Push(StackElement{Type: Float, Value: exp})
 	default:
 		return errors.New("ERROR: cannot perform EXP_OP on different types")
 	}
@@ -1133,6 +1201,8 @@ func (g *Gorth) Inc() error {
 	switch {
 	case val.Type == Int:
 		g.Push(StackElement{Type: Int, Value: val.Value.(int) + 1})
+	case val.Type == Float:
+		g.Push(StackElement{Type: Float, Value: val.Value.(float64) + 1})
 	// variable increment
 	case val.Type == Identifier:
 		_, exists := g.VariableMap[val.Value.(string)]
@@ -1141,12 +1211,18 @@ func (g *Gorth) Inc() error {
 			return fmt.Errorf("ERROR: variable %v has not been declared", val.Value.(string))
 		}
 
-		if g.VariableMap[val.Value.(string)].Type == Int {
+		switch {
+		case g.VariableMap[val.Value.(string)].Type == Int:
 			incVal := g.VariableMap[val.Value.(string)].Value.(int) + 1
 			temp := g.VariableMap[val.Value.(string)]
 			temp.Value = incVal
 			g.VariableMap[val.Value.(string)] = temp
-		} else {
+		case g.VariableMap[val.Value.(string)].Type == Float:
+			incVal := g.VariableMap[val.Value.(string)].Value.(float64) + 1
+			temp := g.VariableMap[val.Value.(string)]
+			temp.Value = incVal
+			g.VariableMap[val.Value.(string)] = temp
+		default:
 			return errors.New("ERROR: cannot perform INC_OP on different types")
 		}
 	default:
@@ -1163,6 +1239,8 @@ func (g *Gorth) Dec() error {
 	switch {
 	case val.Type == Int:
 		g.Push(StackElement{Type: Int, Value: val.Value.(int) - 1})
+	case val.Type == Float:
+		g.Push(StackElement{Type: Float, Value: val.Value.(float64) - 1})
 	// variable decrement
 	case val.Type == Identifier:
 		_, exists := g.VariableMap[val.Value.(string)]
@@ -1171,12 +1249,18 @@ func (g *Gorth) Dec() error {
 			return fmt.Errorf("ERROR: variable %v has not been declared", val.Value.(string))
 		}
 
-		if g.VariableMap[val.Value.(string)].Type == Int {
+		switch {
+		case g.VariableMap[val.Value.(string)].Type == Int:
 			decVal := g.VariableMap[val.Value.(string)].Value.(int) - 1
 			temp := g.VariableMap[val.Value.(string)]
 			temp.Value = decVal
 			g.VariableMap[val.Value.(string)] = temp
-		} else {
+		case g.VariableMap[val.Value.(string)].Type == Float:
+			decVal := g.VariableMap[val.Value.(string)].Value.(float64) - 1
+			temp := g.VariableMap[val.Value.(string)]
+			temp.Value = decVal
+			g.VariableMap[val.Value.(string)] = temp
+		default:
 			return errors.New("ERROR: cannot perform DEC_OP on different types")
 		}
 	default:
@@ -1195,6 +1279,8 @@ func (g *Gorth) Neg() error {
 		g.Push(StackElement{Type: Int, Value: -val.Value.(int)})
 	case val.Type == Float:
 		g.Push(StackElement{Type: Float, Value: -val.Value.(float64)})
+	case val.Type == Bool:
+		g.Push(StackElement{Type: Bool, Value: !val.Value.(bool)})
 	// variable negation
 	case val.Type == Identifier:
 		_, exists := g.VariableMap[val.Value.(string)]
@@ -1233,10 +1319,12 @@ func (g *Gorth) Swap() error {
 	if err != nil {
 		return err
 	}
+
 	val2, err := g.Pop()
 	if err != nil {
 		return err
 	}
+
 	g.Push(val1)
 	g.Push(val2)
 	return nil
