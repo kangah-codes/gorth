@@ -7,22 +7,22 @@
     <img src="badge.svg" alt="Coverage" />
 </p>
 
-Gorth is a Go implementation of a simple Forth-like language. It is a work in progress and is not yet feature complete. Heavily inspired by Porth, may even copy some of his code tbh.
-
 ## Description
 
-This project is a stack-based programming language implemented in Go. It provides a simple and efficient way to write programs using stack operations.
+Gorth is a Go implementation of a simple stack-based language. It is a work in progress and is not yet feature complete. Heavily inspired by Porth.
 
 ## Features
 
 -   Basic stack operations: push, pop, swap, duplicate
 -   Arithmetic operations: add, subtract, multiply, divide
 -   Comparison and logical operations
+-   Variable assignment and manipulation
 -   Control flow: conditional branches and loops (Coming soon!)
 -   Functions or subroutines (Coming soon!)
 -   Basic input/output (Coming soon!)
 -   Error handling (Coming soon!)
 -   Memory management (Coming soon!)
+-   Standard library (Coming soon!)
 
 ## Exhaustive List of operations
 
@@ -78,4 +78,4 @@ Gorth supports various built-in operators, including arithmetic operations (+, -
 
 ## Contributing
 
-If you're open to contributions, provide instructions on how potential contributors can help improve your project.
+Idk make a pr or something
