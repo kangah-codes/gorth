@@ -300,13 +300,7 @@ func TestPeek(t *testing.T) {
 }
 
 func TestAdd(t *testing.T) {
-	testCases := []struct {
-		stack       []StackElement
-		variableMap map[string]Variable
-		expected    []StackElement
-		expectedErr error
-		title       string
-	}{
+	testCases := TestCase{
 		// Test integer addition
 		{
 			stack: []StackElement{
@@ -454,13 +448,7 @@ func TestAdd(t *testing.T) {
 }
 
 func TestSub(t *testing.T) {
-	testCases := []struct {
-		stack       []StackElement
-		variableMap map[string]Variable
-		expected    []StackElement
-		expectedErr error
-		title       string
-	}{
+	testCases := TestCase{
 		// Test integer subtraction
 		{
 			stack: []StackElement{
@@ -630,13 +618,7 @@ func TestSub(t *testing.T) {
 	}
 }
 func TestMul(t *testing.T) {
-	testCases := []struct {
-		stack       []StackElement
-		variableMap map[string]Variable
-		expected    []StackElement
-		expectedErr error
-		title       string
-	}{
+	testCases := TestCase{
 		// Test integer multiplication
 		{
 			stack: []StackElement{
@@ -756,13 +738,7 @@ func TestMul(t *testing.T) {
 }
 
 func TestDiv(t *testing.T) {
-	testCases := []struct {
-		stack       []StackElement
-		variableMap map[string]Variable
-		expected    []StackElement
-		expectedErr error
-		title       string
-	}{
+	testCases := TestCase{
 		// Test integer division
 		{
 			stack: []StackElement{
@@ -1510,6 +1486,292 @@ func TestSwap(t *testing.T) {
 			g.VariableMap = tc.variableMap
 
 			err := g.Swap()
+			if err != nil {
+				if tc.expectedErr == nil {
+					t.Errorf("Unexpected error: %v", err)
+				} else if err.Error() != tc.expectedErr.Error() {
+					t.Errorf("Expected error: %q, but got: %q", tc.expectedErr, err)
+				}
+			}
+
+			if !reflect.DeepEqual(g.ExecStack, tc.expected) {
+				t.Errorf("Expected stack: %v, but got: %v", tc.expected, g.ExecStack)
+			}
+		})
+	}
+}
+
+func TestAnd(t *testing.T) {
+	var testCases = TestCase{
+		// Test integer AND
+		{
+			stack: []StackElement{
+				{Type: Int, Value: 5},
+				{Type: Int, Value: 10},
+			},
+			expected:    []StackElement{},
+			expectedErr: errors.New("ERROR: cannot perform AND_OP on non boolean types"),
+			title:       "Test integer AND",
+		},
+		// Test float AND
+		{
+			stack: []StackElement{
+				{Type: Float, Value: 3.14},
+				{Type: Float, Value: 2.0},
+			},
+			expected:    []StackElement{},
+			expectedErr: errors.New("ERROR: cannot perform AND_OP on non boolean types"),
+			title:       "Test float AND",
+		},
+		// Test mixed number AND (int and float)
+		{
+			stack: []StackElement{
+				{Type: Int, Value: 5},
+				{Type: Float, Value: 2.5},
+			},
+			expected:    []StackElement{},
+			expectedErr: errors.New("ERROR: cannot perform AND_OP on non boolean types"),
+			title:       "Test mixed number AND (int and float)",
+		},
+		// Test mixed number AND (float and int)
+		{
+			stack: []StackElement{
+				{Type: Float, Value: 2.5},
+				{Type: Int, Value: 5},
+			},
+			expected:    []StackElement{},
+			expectedErr: errors.New("ERROR: cannot perform AND_OP on non boolean types"),
+			title:       "Test mixed number AND (float and int)",
+		},
+		// Test variable AND
+		{
+			stack: []StackElement{
+				{Type: Identifier, Value: "x"},
+				{Type: Identifier, Value: "y"},
+			},
+			variableMap: map[string]Variable{
+				"x": {Name: "x", Type: Int, Value: 5},
+				"y": {Name: "y", Type: Int, Value: 10},
+			},
+			expected:    []StackElement{},
+			expectedErr: errors.New("ERROR: cannot perform AND_OP on non boolean types"),
+			title:       "Test variable AND",
+		},
+		// Test variable AND with undeclared variable
+		{
+			stack: []StackElement{
+				{Type: Identifier, Value: "x"},
+				{Type: Identifier, Value: "y"},
+			},
+			variableMap: map[string]Variable{
+				"x": {Name: "x", Type: Int, Value: 5},
+			},
+			expected:    []StackElement{},
+			expectedErr: fmt.Errorf("ERROR: variable y has not been declared"),
+			title:       "Test variable AND with undeclared variable",
+		},
+		// Test variable AND with different types
+		{
+			stack: []StackElement{
+				{Type: Identifier, Value: "x"},
+				{Type: Identifier, Value: "y"},
+			},
+			variableMap: map[string]Variable{
+				"x": {Name: "x", Type: Int, Value: 5},
+				"y": {Name: "y", Type: Float, Value: 2.5},
+			},
+			expected:    []StackElement{},
+			expectedErr: errors.New("ERROR: cannot perform AND_OP on non boolean types"),
+			title:       "Test variable AND with different types",
+		},
+		// Test boolean AND (true and true)
+		{
+			stack: []StackElement{
+				{Type: Bool, Value: true},
+				{Type: Bool, Value: true},
+			},
+			expected: []StackElement{
+				{Type: Bool, Value: true},
+			},
+			expectedErr: nil,
+			title:       "Test boolean AND (true and true)",
+		},
+		// Test boolean AND (true and false)
+		{
+			stack: []StackElement{
+				{Type: Bool, Value: true},
+				{Type: Bool, Value: false},
+			},
+			expected: []StackElement{
+				{Type: Bool, Value: false},
+			},
+			expectedErr: nil,
+			title:       "Test boolean AND (true and false)",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.title, func(t *testing.T) {
+			g := NewGorth(false, false)
+			g.ExecStack = tc.stack
+			g.VariableMap = tc.variableMap
+
+			err := g.And()
+			if err != nil {
+				if tc.expectedErr == nil {
+					t.Errorf("Unexpected error: %v", err)
+				} else if err.Error() != tc.expectedErr.Error() {
+					t.Errorf("Expected error: %q, but got: %q", tc.expectedErr, err)
+				}
+			}
+
+			if !reflect.DeepEqual(g.ExecStack, tc.expected) {
+				t.Errorf("Expected stack: %v, but got: %v", tc.expected, g.ExecStack)
+			}
+		})
+	}
+}
+
+func TestOr(t *testing.T) {
+	var testCases = TestCase{
+		// Test integer OR
+		{
+			stack: []StackElement{
+				{Type: Int, Value: 5},
+				{Type: Int, Value: 10},
+			},
+			expected:    []StackElement{},
+			expectedErr: errors.New("ERROR: cannot perform OR_OP on non boolean types"),
+			title:       "Test integer OR",
+		},
+		// Test float OR
+		{
+			stack: []StackElement{
+				{Type: Float, Value: 3.14},
+				{Type: Float, Value: 2.0},
+			},
+			expected:    []StackElement{},
+			expectedErr: errors.New("ERROR: cannot perform OR_OP on non boolean types"),
+			title:       "Test float OR",
+		},
+		// Test mixed number OR (int and float)
+		{
+			stack: []StackElement{
+				{Type: Int, Value: 5},
+				{Type: Float, Value: 2.5},
+			},
+			expected:    []StackElement{},
+			expectedErr: errors.New("ERROR: cannot perform OR_OP on non boolean types"),
+			title:       "Test mixed number OR (int and float)",
+		},
+		// Test mixed number OR (float and int)
+		{
+			stack: []StackElement{
+				{Type: Float, Value: 2.5},
+				{Type: Int, Value: 5},
+			},
+			expected:    []StackElement{},
+			expectedErr: errors.New("ERROR: cannot perform OR_OP on non boolean types"),
+			title:       "Test mixed number OR (float and int)",
+		},
+		// Test variable OR
+		{
+			stack: []StackElement{
+				{Type: Identifier, Value: "x"},
+				{Type: Identifier, Value: "y"},
+			},
+			variableMap: map[string]Variable{
+				"x": {Name: "x", Type: Int, Value: 5},
+				"y": {Name: "y", Type: Int, Value: 10},
+			},
+			expected:    []StackElement{},
+			expectedErr: errors.New("ERROR: cannot perform OR_OP on non boolean types"),
+			title:       "Test variable OR",
+		},
+		// Test variable OR with undeclared variable
+		{
+			stack: []StackElement{
+				{Type: Identifier, Value: "x"},
+				{Type: Identifier, Value: "y"},
+			},
+			variableMap: map[string]Variable{
+				"x": {Name: "x", Type: Int, Value: 5},
+			},
+			expected:    []StackElement{},
+			expectedErr: fmt.Errorf("ERROR: variable y has not been declared"),
+			title:       "Test variable OR with undeclared variable",
+		},
+		// Test variable OR with different types
+		{
+			stack: []StackElement{
+				{Type: Identifier, Value: "x"},
+				{Type: Identifier, Value: "y"},
+			},
+			variableMap: map[string]Variable{
+				"x": {Name: "x", Type: Int, Value: 5},
+				"y": {Name: "y", Type: Float, Value: 2.5},
+			},
+			expected:    []StackElement{},
+			expectedErr: errors.New("ERROR: cannot perform OR_OP on non boolean types"),
+			title:       "Test variable OR with different types",
+		},
+		// Test boolean OR (true and true)
+		{
+			stack: []StackElement{
+				{Type: Bool, Value: true},
+				{Type: Bool, Value: true},
+			},
+			expected: []StackElement{
+				{Type: Bool, Value: true},
+			},
+			expectedErr: nil,
+			title:       "Test boolean OR (true and true)",
+		},
+		// Test boolean OR (true and false)
+		{
+			stack: []StackElement{
+				{Type: Bool, Value: true},
+				{Type: Bool, Value: false},
+			},
+			expected: []StackElement{
+				{Type: Bool, Value: true},
+			},
+			expectedErr: nil,
+			title:       "Test boolean OR (true and false)",
+		},
+		// Test boolean OR (false and true)
+		{
+			stack: []StackElement{
+				{Type: Bool, Value: false},
+				{Type: Bool, Value: true},
+			},
+			expected: []StackElement{
+				{Type: Bool, Value: true},
+			},
+			expectedErr: nil,
+			title:       "Test boolean OR (false and true)",
+		},
+		// Test boolean OR (false and false)
+		{
+			stack: []StackElement{
+				{Type: Bool, Value: false},
+				{Type: Bool, Value: false},
+			},
+			expected: []StackElement{
+				{Type: Bool, Value: false},
+			},
+			expectedErr: nil,
+			title:       "Test boolean OR (false and false)",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.title, func(t *testing.T) {
+			g := NewGorth(false, false)
+			g.ExecStack = tc.stack
+			g.VariableMap = tc.variableMap
+
+			err := g.Or()
 			if err != nil {
 				if tc.expectedErr == nil {
 					t.Errorf("Unexpected error: %v", err)

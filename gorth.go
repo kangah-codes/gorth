@@ -387,8 +387,16 @@ func (g *Gorth) Drop() error {
 	if len(g.ExecStack) < 1 {
 		return errors.New("ERROR: cannot drop from an empty stack")
 	}
-	g.Pop()
-	return nil
+
+	// if g is a variable, delete it from the variable map
+	// since it's no longer in use
+	if g.ExecStack[len(g.ExecStack)-1].Type == Identifier {
+		delete(g.VariableMap, g.ExecStack[len(g.ExecStack)-1].Value.(string))
+	}
+
+	_, err := g.Pop()
+
+	return err
 }
 
 func (g *Gorth) Dump() error {
@@ -1352,14 +1360,9 @@ func (g *Gorth) And() error {
 		return err
 	}
 
-	// check types
-	if val1.Type != Bool && val1.Type != Identifier || val2.Type != Bool && val2.Type != Identifier {
-		return errors.New("ERROR: cannot perform AND_OP on non boolean types")
-	}
-
 	switch {
-	case val1.Value.(bool) && val2.Value.(bool):
-		g.Push(StackElement{Type: Bool, Value: true})
+	case val1.Type == Bool && val2.Type == Bool:
+		g.Push(StackElement{Type: Bool, Value: val1.Value.(bool) && val2.Value.(bool)})
 	// using variables
 	case val1.Type == Identifier && val2.Type == Identifier:
 		_, exists1 := g.VariableMap[val1.Value.(string)]
@@ -1373,14 +1376,10 @@ func (g *Gorth) And() error {
 			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
 		}
 
-		if g.VariableMap[val1.Value.(string)].Type == g.VariableMap[val2.Value.(string)].Type {
-			switch g.VariableMap[val1.Value.(string)].Type {
-			case Bool:
-				g.Push(StackElement{Type: Bool, Value: g.VariableMap[val1.Value.(string)].Value.(bool) && g.VariableMap[val2.Value.(string)].Value.(bool)})
-			default:
-				return errors.New("ERROR: cannot perform AND_OP on non boolean types")
-			}
-		} else {
+		switch {
+		case g.VariableMap[val1.Value.(string)].Type == Bool && g.VariableMap[val2.Value.(string)].Type == Bool:
+			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val1.Value.(string)].Value.(bool) && g.VariableMap[val2.Value.(string)].Value.(bool)})
+		default:
 			return errors.New("ERROR: cannot perform AND_OP on non boolean types")
 		}
 	// val1 is a variable and val2 is not
@@ -1412,7 +1411,7 @@ func (g *Gorth) And() error {
 			return errors.New("ERROR: cannot perform AND_OP on non boolean types")
 		}
 	default:
-		g.Push(StackElement{Type: Bool, Value: false})
+		return errors.New("ERROR: cannot perform AND_OP on non boolean types")
 	}
 
 	return nil
@@ -1435,8 +1434,8 @@ func (g *Gorth) Or() error {
 	}
 
 	switch {
-	case val1.Value.(bool) || val2.Value.(bool):
-		g.Push(StackElement{Type: Bool, Value: true})
+	case val1.Type == Bool && val2.Type == Bool:
+		g.Push(StackElement{Type: Bool, Value: val1.Value.(bool) || val2.Value.(bool)})
 	// using variables
 	case val1.Type == Identifier && val2.Type == Identifier:
 		_, exists1 := g.VariableMap[val1.Value.(string)]
@@ -1450,14 +1449,10 @@ func (g *Gorth) Or() error {
 			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
 		}
 
-		if g.VariableMap[val1.Value.(string)].Type == g.VariableMap[val2.Value.(string)].Type {
-			switch g.VariableMap[val1.Value.(string)].Type {
-			case Bool:
-				g.Push(StackElement{Type: Bool, Value: g.VariableMap[val1.Value.(string)].Value.(bool) || g.VariableMap[val2.Value.(string)].Value.(bool)})
-			default:
-				return errors.New("ERROR: cannot perform OR_OP on non boolean types")
-			}
-		} else {
+		switch {
+		case g.VariableMap[val1.Value.(string)].Type == Bool && g.VariableMap[val2.Value.(string)].Type == Bool:
+			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val1.Value.(string)].Value.(bool) || g.VariableMap[val2.Value.(string)].Value.(bool)})
+		default:
 			return errors.New("ERROR: cannot perform OR_OP on non boolean types")
 		}
 	// val1 is a variable and val2 is not
@@ -1466,6 +1461,10 @@ func (g *Gorth) Or() error {
 
 		if !exists1 {
 			return fmt.Errorf("ERROR: variable %v has not been declared", val1.Value.(string))
+		}
+
+		if val2.Type != Bool {
+			return errors.New("ERROR: cannot perform OR_OP on non boolean types")
 		}
 
 		switch g.VariableMap[val1.Value.(string)].Type {
@@ -1482,6 +1481,10 @@ func (g *Gorth) Or() error {
 			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
 		}
 
+		if val1.Type != Bool {
+			return errors.New("ERROR: cannot perform OR_OP on non boolean types")
+		}
+
 		switch g.VariableMap[val2.Value.(string)].Type {
 		case Bool:
 			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(bool) || val1.Value.(bool)})
@@ -1489,7 +1492,7 @@ func (g *Gorth) Or() error {
 			return errors.New("ERROR: cannot perform OR_OP on non boolean types")
 		}
 	default:
-		g.Push(StackElement{Type: Bool, Value: false})
+		return errors.New("ERROR: cannot perform OR_OP on non boolean types")
 	}
 
 	return nil

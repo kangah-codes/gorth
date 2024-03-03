@@ -1,3 +1,4 @@
 /x 2.5 def
+/y 2.5 def
 
-_x ++
+_x _y && print

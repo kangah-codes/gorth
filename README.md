@@ -1,5 +1,12 @@
 # Gorth
 
+<p>
+    <a href="https://go.dev">
+        <img src="https://img.shields.io/badge/Language-Golang-077D9C" alt="Go" />
+    </a>
+    <img src="badge.svg" alt="Coverage" />
+</p>
+
 Gorth is a Go implementation of a simple Forth-like language. It is a work in progress and is not yet feature complete. Heavily inspired by Porth, may even copy some of his code tbh.
 
 ## Description
@@ -20,6 +27,7 @@ This project is a stack-based programming language implemented in Go. It provide
 ## Exhaustive List of operations
 
 -   Push (Primitive Op) - Pushes a value onto the stack
+-   Peek (Primitive Op) - Peeks at the top value on the stack
 -   Pop (Primitive Op) - Pops a value off the stack
 -   Swap (swap) - Swaps the top two values on the stack
 -   Dup (dup) - Duplicates the top value on the stack
