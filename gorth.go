@@ -195,10 +195,10 @@ func Tokenize(s string) ([]StackElement, map[string]Variable, error) {
 	boolRegex := regexp.MustCompile(`^(true|false)$`)
 	operatorRegex := regexp.MustCompile(`^(\+|-|\*|/|%|\^|\+\+|--|neg|swap|dup|drop|dump|print|rot|&&|\|\||!|==|!=|===|>|<|>=|<=|=)$`)
 	varNameRegex := regexp.MustCompile(`^\/[a-zA-Z_][a-zA-Z0-9_]*$`)
+	varUsageRegex := regexp.MustCompile(`^_[a-zA-Z_][a-zA-Z0-9_]*$`)
 	// TODO: rename this
 	keyWordRegex := regexp.MustCompile(`^(def|const|=)$`)
 	// using variables : _varName
-	varUsageRegex := regexp.MustCompile(`^_[a-zA-Z_][a-zA-Z0-9_]*$`)
 
 	// Split the string into tokens
 	r := regexp.MustCompile(`"[^"]*"|\S+`)
@@ -1571,17 +1571,17 @@ func (g *Gorth) Equal() error {
 	}
 
 	switch {
-	case val1.Type == Int && val2.Type == Int:
+	case val1.Type == Int && val2.Type == Int && val1.Type != Identifier && val2.Type != Identifier:
 		g.Push(StackElement{Type: Bool, Value: val1.Value == val2.Value})
-	case val1.Type == Float && val2.Type == Float:
+	case val1.Type == Float && val2.Type == Float && val1.Type != Identifier && val2.Type != Identifier:
 		g.Push(StackElement{Type: Bool, Value: val1.Value == val2.Value})
-	case val1.Type == Int && val2.Type == Float:
+	case val1.Type == Int && val2.Type == Float && val1.Type != Identifier && val2.Type != Identifier:
 		g.Push(StackElement{Type: Bool, Value: float64(val1.Value.(int)) == val2.Value.(float64)})
-	case val1.Type == Float && val2.Type == Int:
+	case val1.Type == Float && val2.Type == Int && val1.Type != Identifier && val2.Type != Identifier:
 		g.Push(StackElement{Type: Bool, Value: val1.Value.(float64) == float64(val2.Value.(int))})
-	case val1.Type == String && val2.Type == String:
+	case val1.Type == String && val2.Type == String && val1.Type != Identifier && val2.Type != Identifier:
 		g.Push(StackElement{Type: Bool, Value: val1.Value == val2.Value})
-	case val1.Type == Bool && val2.Type == Bool:
+	case val1.Type == Bool && val2.Type == Bool && val1.Type != Identifier && val2.Type != Identifier:
 		g.Push(StackElement{Type: Bool, Value: val1.Value == val2.Value})
 	case val1.Type == Identifier && val2.Type == Identifier:
 		_, exists1 := g.VariableMap[val1.Value.(string)]
@@ -1688,7 +1688,7 @@ func (g *Gorth) EqualType() error {
 	}
 
 	switch {
-	case val1.Type == val2.Type:
+	case val1.Type == val2.Type && val1.Type != Identifier && val2.Type != Identifier:
 		g.Push(StackElement{Type: Bool, Value: true})
 	case val1.Type == Identifier && val2.Type == Identifier:
 		_, exists1 := g.VariableMap[val1.Value.(string)]
@@ -1831,13 +1831,13 @@ func (g *Gorth) LessThan() error {
 	}
 
 	switch {
-	case val1.Type == Int && val2.Type == Int:
+	case val1.Type == Int && val2.Type == Int && val1.Type != Identifier && val2.Type != Identifier:
 		g.Push(StackElement{Type: Bool, Value: val2.Value.(int) < val1.Value.(int)})
-	case val1.Type == Float && val2.Type == Float:
+	case val1.Type == Float && val2.Type == Float && val1.Type != Identifier && val2.Type != Identifier:
 		g.Push(StackElement{Type: Bool, Value: val2.Value.(float64) < val1.Value.(float64)})
-	case val1.Type == Int && val2.Type == Float:
+	case val1.Type == Int && val2.Type == Float && val1.Type != Identifier && val2.Type != Identifier:
 		g.Push(StackElement{Type: Bool, Value: val2.Value.(float64) < float64(val1.Value.(int))})
-	case val1.Type == Float && val2.Type == Int:
+	case val1.Type == Float && val2.Type == Int && val1.Type != Identifier && val2.Type != Identifier:
 		g.Push(StackElement{Type: Bool, Value: float64(val2.Value.(int)) < val1.Value.(float64)})
 	// using variables
 	case val1.Type == Identifier && val2.Type == Identifier:
@@ -1852,14 +1852,16 @@ func (g *Gorth) LessThan() error {
 			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
 		}
 
-		if g.VariableMap[val1.Value.(string)].Type == g.VariableMap[val2.Value.(string)].Type {
-			switch g.VariableMap[val1.Value.(string)].Type {
-			case Int:
-				g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(int) < g.VariableMap[val1.Value.(string)].Value.(int)})
-			case Float:
-				g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(float64) < g.VariableMap[val1.Value.(string)].Value.(float64)})
-			}
-		} else {
+		switch {
+		case g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == Int:
+			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(int) < g.VariableMap[val1.Value.(string)].Value.(int)})
+		case g.VariableMap[val1.Value.(string)].Type == Float && g.VariableMap[val2.Value.(string)].Type == Float:
+			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(float64) < g.VariableMap[val1.Value.(string)].Value.(float64)})
+		case g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == Float:
+			g.Push(StackElement{Type: Bool, Value: float64(g.VariableMap[val2.Value.(string)].Value.(int)) < g.VariableMap[val1.Value.(string)].Value.(float64)})
+		case g.VariableMap[val1.Value.(string)].Type == Float && g.VariableMap[val2.Value.(string)].Type == Int:
+			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(float64) < float64(g.VariableMap[val1.Value.(string)].Value.(int))})
+		default:
 			return errors.New("ERROR: cannot perform LS_THAN_OP on different types")
 		}
 	// val1 is a variable and val2 is not
@@ -1870,14 +1872,16 @@ func (g *Gorth) LessThan() error {
 			return fmt.Errorf("ERROR: variable %v has not been declared", val1.Value.(string))
 		}
 
-		if g.VariableMap[val1.Value.(string)].Type == val2.Type {
-			switch val2.Type {
-			case Int:
-				g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(int) < val1.Value.(int)})
-			case Float:
-				g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(float64) < val1.Value.(float64)})
-			}
-		} else {
+		switch {
+		case g.VariableMap[val1.Value.(string)].Type == Int && val2.Type == Int:
+			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val1.Value.(string)].Value.(int) < val2.Value.(int)})
+		case g.VariableMap[val1.Value.(string)].Type == Float && val2.Type == Float:
+			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val1.Value.(string)].Value.(float64) < val2.Value.(float64)})
+		case g.VariableMap[val1.Value.(string)].Type == Int && val2.Type == Float:
+			g.Push(StackElement{Type: Bool, Value: float64(g.VariableMap[val1.Value.(string)].Value.(int)) < val2.Value.(float64)})
+		case g.VariableMap[val1.Value.(string)].Type == Float && val2.Type == Int:
+			g.Push(StackElement{Type: Bool, Value: float64(g.VariableMap[val1.Value.(string)].Value.(int)) < val2.Value.(float64)})
+		default:
 			return errors.New("ERROR: cannot perform LS_THAN_OP on different types")
 		}
 	// val2 is a variable and val1 is not
@@ -1888,14 +1892,16 @@ func (g *Gorth) LessThan() error {
 			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
 		}
 
-		if g.VariableMap[val2.Value.(string)].Type == val1.Type {
-			switch val1.Type {
-			case Int:
-				g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(int) < val1.Value.(int)})
-			case Float:
-				g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(float64) < val1.Value.(float64)})
-			}
-		} else {
+		switch {
+		case g.VariableMap[val2.Value.(string)].Type == Int && val1.Type == Int:
+			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(int) < val1.Value.(int)})
+		case g.VariableMap[val2.Value.(string)].Type == Float && val1.Type == Float:
+			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(float64) < val1.Value.(float64)})
+		case g.VariableMap[val2.Value.(string)].Type == Int && val1.Type == Float:
+			g.Push(StackElement{Type: Bool, Value: float64(g.VariableMap[val2.Value.(string)].Value.(int)) < val1.Value.(float64)})
+		case g.VariableMap[val2.Value.(string)].Type == Float && val1.Type == Int:
+			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(float64) < val1.Value.(float64)})
+		default:
 			return errors.New("ERROR: cannot perform LS_THAN_OP on different types")
 		}
 	default:
@@ -1937,14 +1943,16 @@ func (g *Gorth) GreaterThanEqual() error {
 			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
 		}
 
-		if g.VariableMap[val1.Value.(string)].Type == g.VariableMap[val2.Value.(string)].Type {
-			switch g.VariableMap[val1.Value.(string)].Type {
-			case Int:
-				g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(int) >= g.VariableMap[val1.Value.(string)].Value.(int)})
-			case Float:
-				g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(float64) >= g.VariableMap[val1.Value.(string)].Value.(float64)})
-			}
-		} else {
+		switch {
+		case g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == Int:
+			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(int) >= g.VariableMap[val1.Value.(string)].Value.(int)})
+		case g.VariableMap[val1.Value.(string)].Type == Float && g.VariableMap[val2.Value.(string)].Type == Float:
+			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(float64) >= g.VariableMap[val1.Value.(string)].Value.(float64)})
+		case g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == Float:
+			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(float64) >= float64(g.VariableMap[val1.Value.(string)].Value.(int))})
+		case g.VariableMap[val1.Value.(string)].Type == Float && g.VariableMap[val2.Value.(string)].Type == Int:
+			g.Push(StackElement{Type: Bool, Value: float64(g.VariableMap[val2.Value.(string)].Value.(int)) >= g.VariableMap[val1.Value.(string)].Value.(float64)})
+		default:
 			return errors.New("ERROR: cannot perform GT_THAN_EQ_OP on different types")
 		}
 	// val1 is a variable and val2 is not
@@ -1955,14 +1963,16 @@ func (g *Gorth) GreaterThanEqual() error {
 			return fmt.Errorf("ERROR: variable %v has not been declared", val1.Value.(string))
 		}
 
-		if g.VariableMap[val1.Value.(string)].Type == val2.Type {
-			switch val2.Type {
-			case Int:
-				g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(int) >= val1.Value.(int)})
-			case Float:
-				g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(float64) >= val1.Value.(float64)})
-			}
-		} else {
+		switch {
+		case g.VariableMap[val1.Value.(string)].Type == Int && val2.Type == Int:
+			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val1.Value.(string)].Value.(int) >= val2.Value.(int)})
+		case g.VariableMap[val1.Value.(string)].Type == Float && val2.Type == Float:
+			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val1.Value.(string)].Value.(float64) >= val2.Value.(float64)})
+		case g.VariableMap[val1.Value.(string)].Type == Int && val2.Type == Float:
+			g.Push(StackElement{Type: Bool, Value: float64(g.VariableMap[val1.Value.(string)].Value.(int)) >= val2.Value.(float64)})
+		case g.VariableMap[val1.Value.(string)].Type == Float && val2.Type == Int:
+			g.Push(StackElement{Type: Bool, Value: float64(g.VariableMap[val1.Value.(string)].Value.(int)) >= val2.Value.(float64)})
+		default:
 			return errors.New("ERROR: cannot perform GT_THAN_EQ_OP on different types")
 		}
 	// val2 is a variable and val1 is not
@@ -1973,14 +1983,16 @@ func (g *Gorth) GreaterThanEqual() error {
 			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
 		}
 
-		if g.VariableMap[val2.Value.(string)].Type == val1.Type {
-			switch val1.Type {
-			case Int:
-				g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(int) >= val1.Value.(int)})
-			case Float:
-				g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(float64) >= val1.Value.(float64)})
-			}
-		} else {
+		switch {
+		case g.VariableMap[val2.Value.(string)].Type == Int && val1.Type == Int:
+			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(int) >= val1.Value.(int)})
+		case g.VariableMap[val2.Value.(string)].Type == Float && val1.Type == Float:
+			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(float64) >= val1.Value.(float64)})
+		case g.VariableMap[val2.Value.(string)].Type == Int && val1.Type == Float:
+			g.Push(StackElement{Type: Bool, Value: float64(g.VariableMap[val2.Value.(string)].Value.(int)) >= val1.Value.(float64)})
+		case g.VariableMap[val2.Value.(string)].Type == Float && val1.Type == Int:
+			g.Push(StackElement{Type: Bool, Value: float64(g.VariableMap[val2.Value.(string)].Value.(int)) >= val1.Value.(float64)})
+		default:
 			return errors.New("ERROR: cannot perform GT_THAN_EQ_OP on different types")
 		}
 	default:
@@ -2001,13 +2013,13 @@ func (g *Gorth) LessThanEqual() error {
 	}
 
 	switch {
-	case val1.Type == Int && val2.Type == Int:
+	case val1.Type == Int && val2.Type == Int && val1.Type != Identifier && val2.Type != Identifier:
 		g.Push(StackElement{Type: Bool, Value: val2.Value.(int) <= val1.Value.(int)})
-	case val1.Type == Float && val2.Type == Float:
+	case val1.Type == Float && val2.Type == Float && val1.Type != Identifier && val2.Type != Identifier:
 		g.Push(StackElement{Type: Bool, Value: val2.Value.(float64) <= val1.Value.(float64)})
-	case val1.Type == Int && val2.Type == Float:
+	case val1.Type == Int && val2.Type == Float && val1.Type != Identifier && val2.Type != Identifier:
 		g.Push(StackElement{Type: Bool, Value: val2.Value.(float64) <= float64(val1.Value.(int))})
-	case val1.Type == Float && val2.Type == Int:
+	case val1.Type == Float && val2.Type == Int && val1.Type != Identifier && val2.Type != Identifier:
 		g.Push(StackElement{Type: Bool, Value: float64(val2.Value.(int)) <= val1.Value.(float64)})
 	// using variables
 	case val1.Type == Identifier && val2.Type == Identifier:
@@ -2022,15 +2034,17 @@ func (g *Gorth) LessThanEqual() error {
 			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
 		}
 
-		if g.VariableMap[val1.Value.(string)].Type == g.VariableMap[val2.Value.(string)].Type {
-			switch g.VariableMap[val1.Value.(string)].Type {
-			case Int:
-				g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(int) <= g.VariableMap[val1.Value.(string)].Value.(int)})
-			case Float:
-				g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(float64) <= g.VariableMap[val1.Value.(string)].Value.(float64)})
-			}
-		} else {
-			return errors.New("ERROR: cannot perform GT_THAN_EQ_OP on different types")
+		switch {
+		case g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == Int:
+			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(int) <= g.VariableMap[val1.Value.(string)].Value.(int)})
+		case g.VariableMap[val1.Value.(string)].Type == Float && g.VariableMap[val2.Value.(string)].Type == Float:
+			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(float64) <= g.VariableMap[val1.Value.(string)].Value.(float64)})
+		case g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == Float:
+			g.Push(StackElement{Type: Bool, Value: float64(g.VariableMap[val2.Value.(string)].Value.(int)) <= g.VariableMap[val1.Value.(string)].Value.(float64)})
+		case g.VariableMap[val1.Value.(string)].Type == Float && g.VariableMap[val2.Value.(string)].Type == Int:
+			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(float64) <= float64(g.VariableMap[val1.Value.(string)].Value.(int))})
+		default:
+			return errors.New("ERROR: cannot perform LS_THAN_EQ_OP on different types")
 		}
 	// val1 is a variable and val2 is not
 	case val1.Type == Identifier && val2.Type != Identifier:
@@ -2040,15 +2054,17 @@ func (g *Gorth) LessThanEqual() error {
 			return fmt.Errorf("ERROR: variable %v has not been declared", val1.Value.(string))
 		}
 
-		if g.VariableMap[val1.Value.(string)].Type == val2.Type {
-			switch val2.Type {
-			case Int:
-				g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(int) <= val1.Value.(int)})
-			case Float:
-				g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(float64) <= val1.Value.(float64)})
-			}
-		} else {
-			return errors.New("ERROR: cannot perform GT_THAN_EQ_OP on different types")
+		switch {
+		case g.VariableMap[val1.Value.(string)].Type == Int && val2.Type == Int:
+			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val1.Value.(string)].Value.(int) <= val2.Value.(int)})
+		case g.VariableMap[val1.Value.(string)].Type == Float && val2.Type == Float:
+			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val1.Value.(string)].Value.(float64) <= val2.Value.(float64)})
+		case g.VariableMap[val1.Value.(string)].Type == Int && val2.Type == Float:
+			g.Push(StackElement{Type: Bool, Value: float64(g.VariableMap[val1.Value.(string)].Value.(int)) <= val2.Value.(float64)})
+		case g.VariableMap[val1.Value.(string)].Type == Float && val2.Type == Int:
+			g.Push(StackElement{Type: Bool, Value: float64(g.VariableMap[val1.Value.(string)].Value.(int)) <= val2.Value.(float64)})
+		default:
+			return errors.New("ERROR: cannot perform LS_THAN_EQ_OP on different types")
 		}
 	// val2 is a variable and val1 is not
 	case val1.Type != Identifier && val2.Type == Identifier:
@@ -2058,15 +2074,17 @@ func (g *Gorth) LessThanEqual() error {
 			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
 		}
 
-		if g.VariableMap[val2.Value.(string)].Type == val1.Type {
-			switch val1.Type {
-			case Int:
-				g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(int) <= val1.Value.(int)})
-			case Float:
-				g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(float64) <= val1.Value.(float64)})
-			}
-		} else {
-			return errors.New("ERROR: cannot perform GT_THAN_EQ_OP on different types")
+		switch {
+		case g.VariableMap[val2.Value.(string)].Type == Int && val1.Type == Int:
+			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(int) <= val1.Value.(int)})
+		case g.VariableMap[val2.Value.(string)].Type == Float && val1.Type == Float:
+			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(float64) <= val1.Value.(float64)})
+		case g.VariableMap[val2.Value.(string)].Type == Int && val1.Type == Float:
+			g.Push(StackElement{Type: Bool, Value: float64(g.VariableMap[val2.Value.(string)].Value.(int)) <= val1.Value.(float64)})
+		case g.VariableMap[val2.Value.(string)].Type == Float && val1.Type == Int:
+			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(float64) <= val1.Value.(float64)})
+		default:
+			return errors.New("ERROR: cannot perform LS_THAN_EQ_OP on different types")
 		}
 	default:
 		return errors.New("ERROR: cannot perform LS_THAN_EQ_OP on different types")
