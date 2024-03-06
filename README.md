@@ -59,7 +59,7 @@ Gorth supports various built-in operators, including arithmetic operations (+, -
 ```gorth
 "Hello, World!" print drop
 
-# or
+# or this, if in strict mode
 
 "Hello, World!" dump
 ```
@@ -67,13 +67,13 @@ Gorth supports various built-in operators, including arithmetic operations (+, -
 ### Simple Arithmetic
 
 ```gorth
-1 2 + print drop # 3
+1 2 + print drop
 ```
 
 ### Logical Operations
 
 ```gorth
-1 2 != print drop # true
+1 2 != print drop
 ```
 
 ## Contributing
