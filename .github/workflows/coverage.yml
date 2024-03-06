@@ -1,0 +1,40 @@
+name: Generate Coverage Badge
+
+on:
+    push:
+
+jobs:
+    generate-coverage-badge:
+        runs-on: ubuntu-latest
+
+        permissions:
+            # Give the default GITHUB_TOKEN write permission to commit and push the changed files back to the repository.
+            contents: write
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v2
+
+            - name: Set up Go
+              uses: actions/setup-go@v2
+              with:
+                  go-version: "1.21.6"
+
+            - name: Run tests and generate coverage
+              run: |
+                  go test -coverprofile coverage.out
+                  COVERAGE=$(go tool cover -func=coverage.out | grep total: | grep -Eo '[0-9]+\.[0-9]+')
+                  go tool cover -html=coverage.out
+                  go tool cover -func=coverage.out -o=coverage.out
+                  COLOR=orange
+                  if (( $(echo "$COVERAGE <= 50" | bc -l) )) ; then
+                    COLOR=red
+                  elif (( $(echo "$COVERAGE > 80" | bc -l) )); then
+                    COLOR=green
+                  fi
+                  curl "https://img.shields.io/badge/Coverage-$COVERAGE%25-$COLOR" > badge.svg
+
+            - name: Commit badge.svg
+              uses: stefanzweifel/git-auto-commit-action@v5
+              with:
+                  commit_message: "chore: update coverage badge"

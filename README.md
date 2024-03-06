@@ -1,21 +1,43 @@
 # Gorth
 
-Gorth is a Go implementation of a simple Forth-like language. It is a work in progress and is not yet feature complete. Heavily inspired by Porth, may even copy some of his code tbh.
+<p>
+    <a href="https://go.dev">
+        <img src="https://img.shields.io/badge/Language-Golang-077D9C" alt="Go" />
+    </a>
+    <img src="badge.svg" alt="Coverage" />
+</p>
 
 ## Description
 
-This project is a stack-based programming language implemented in Go. It provides a simple and efficient way to write programs using stack operations.
+Gorth is a Go implementation of a simple stack-based language. It is a work in progress and is not yet feature complete. Heavily inspired by Porth.
 
 ## Features
 
 -   Basic stack operations: push, pop, swap, duplicate
 -   Arithmetic operations: add, subtract, multiply, divide
 -   Comparison and logical operations
+-   Variable assignment and manipulation
 -   Control flow: conditional branches and loops (Coming soon!)
 -   Functions or subroutines (Coming soon!)
 -   Basic input/output (Coming soon!)
 -   Error handling (Coming soon!)
 -   Memory management (Coming soon!)
+-   Standard library (Coming soon!)
+
+## Exhaustive List of operations
+
+-   Push (Primitive Op) - Pushes a value onto the stack
+-   Peek (Primitive Op) - Peeks at the top value on the stack
+-   Pop (Primitive Op) - Pops a value off the stack
+-   Swap (swap) - Swaps the top two values on the stack
+-   Dup (dup) - Duplicates the top value on the stack
+-   Rot (rot) - Rotates the top three values on the stack
+-   Drop (rot) - Drops the top value off the stack
+-   Print (print) - Prints the top value on the stack
+-   Dump (dump) - Dumps the top value on the stack
+-   Modulo (%) - Supports int only (a b %) cos I'm lazy
+-   Increment (++) - Increments the top value on the stack by 1
+-   Decrement (--) - Decrements the top value on the stack by 1
 
 ## Usage
 
@@ -56,4 +78,4 @@ Gorth supports various built-in operators, including arithmetic operations (+, -
 
 ## Contributing
 
-If you're open to contributions, provide instructions on how potential contributors can help improve your project.
+Idk make a pr or something
