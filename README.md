@@ -26,18 +26,16 @@ Gorth is a Go implementation of a simple stack-based language. It is a work in p
 
 ## Exhaustive List of operations
 
--   Push (Primitive Op) - Pushes a value onto the stack
--   Peek (Primitive Op) - Peeks at the top value on the stack
--   Pop (Primitive Op) - Pops a value off the stack
--   Swap (swap) - Swaps the top two values on the stack
--   Dup (dup) - Duplicates the top value on the stack
--   Rot (rot) - Rotates the top three values on the stack
--   Drop (rot) - Drops the top value off the stack
--   Print (print) - Prints the top value on the stack
--   Dump (dump) - Dumps the top value on the stack
--   Modulo (%) - Supports int only (a b %) cos I'm lazy
--   Increment (++) - Increments the top value on the stack by 1
--   Decrement (--) - Decrements the top value on the stack by 1
+| Operation | Description                                                    |
+| --------- | -------------------------------------------------------------- |
+| `swap`    | Swaps the top two values on the stack                          |
+| `dup`     | Duplicates the top value on the stack                          |
+| `rot`     | Rotates the top three values on the stack                      |
+| `print`   | Prints the top value on the stack                              |
+| `dump`    | Drops and prints the top value on the stack                    |
+| `%`       | Performs mod operation on top 2 values on the stack (int only) |
+| `++`      | Increments the top value on the stack by 1                     |
+| `--`      | Decrements the top value on the stack by 1                     |
 
 ## Usage
 
@@ -74,6 +72,22 @@ Gorth supports various built-in operators, including arithmetic operations (+, -
 
 ```gorth
 1 2 != print drop
+```
+
+### Assigning a variable
+
+```gorth
+# assigning a variable
+/myName "Joshua" def
+
+# print name and delete variable from stack & variable map
+_myName print drop
+
+# define a const
+/pi 3.14 const
+
+# reassigning pi
+_pi 3.2 = # throws an error
 ```
 
 ## Contributing
