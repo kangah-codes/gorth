@@ -2,10 +2,13 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"strconv"
+	"strings"
 	"unicode"
 )
 
@@ -30,19 +33,37 @@ const (
 	INC_OP
 	DEC_OP
 
+	// STACK MANIPULATION
+	DROP_OP
+	SWAP_OP
+	DUP_OP
+	OVER_OP
+	ROT_OP
+
 	// OPERATORS
 	PRINT_OP
 	DUMP_OP
 )
 
-var identifierMap = map[string]Token{
+var operatorMap = map[string]Token{
 	// MATH OPS
-	"+": ADD_OP,
-	"-": SUB_OP,
-	"*": MUL_OP,
-	"/": DIV_OP,
-	"^": POW_OP,
-	"%": MOD_OP,
+	"+":   ADD_OP,
+	"-":   SUB_OP,
+	"*":   MUL_OP,
+	"/":   DIV_OP,
+	"^":   POW_OP,
+	"%":   MOD_OP,
+	"inc": INC_OP,
+	"dec": DEC_OP,
+	"mod": MOD_OP,
+	"pow": POW_OP,
+
+	// STACK MANIPULATION
+	"drop": DROP_OP,
+	"swap": SWAP_OP,
+	"dup":  DUP_OP,
+	"over": OVER_OP,
+	"rot":  ROT_OP,
 
 	// PRINT OPS
 	"print": PRINT_OP,
@@ -57,9 +78,20 @@ var tokenMap = map[Token]string{
 	STRING:     "STRING",
 	FLOAT:      "FLOAT",
 	BOOL:       "BOOL",
-	ADD_OP:     "ADD_OP",
-	PRINT_OP:   "PRINT_OP",
-	DUMP_OP:    "DUMP_OP",
+
+	// MATH OPS
+	ADD_OP: "ADD_OP",
+
+	// PRINT OPS
+	PRINT_OP: "PRINT_OP",
+	DUMP_OP:  "DUMP_OP",
+
+	// STACK MANIPULATION
+	DROP_OP: "DROP_OP",
+	SWAP_OP: "SWAP_OP",
+	DUP_OP:  "DUP_OP",
+	OVER_OP: "OVER_OP",
+	ROT_OP:  "ROT_OP",
 }
 
 type Token int
@@ -69,8 +101,27 @@ type StackElement struct {
 	Position Position
 }
 
-func isDecimal(c rune) bool {
+type Node struct {
+	Value string
+	Left  *Node
+	Right *Node
+}
+
+func IsOperator(s string) bool {
+	_, ok := operatorMap[s]
+	return ok
+}
+
+func IsDecimal(c rune) bool {
 	return c == '.'
+}
+
+func PrintUsage() {
+	fmt.Println("Usage: gorth <filename> [options]")
+	fmt.Println("  filename: the name of the .gorth file to execute")
+	fmt.Println("  options:")
+	fmt.Println("    -d: optional enable debug mode")
+	fmt.Println("    -s: optional enable strict mode")
 }
 
 type Gorth struct {
@@ -79,10 +130,10 @@ type Gorth struct {
 	ExecutionStack []StackElement
 }
 
-func NewGorth() *Gorth {
+func NewGorth(s bool, d bool) *Gorth {
 	return &Gorth{
-		StrictMode:     false,
-		DebugMode:      false,
+		StrictMode:     s,
+		DebugMode:      d,
 		ExecutionStack: make([]StackElement, 0),
 	}
 }
@@ -118,20 +169,30 @@ func (g *Gorth) Print() error {
 		return err
 	}
 
-	fmt.Print(val.Value)
+	// var sysret syscall.Errno
+
+	// bytes := []byte(val.Value + "\n")
+	// _, _, sysret = syscall.Syscall(syscall.SYS_WRITE, 1, uintptr(unsafe.Pointer(&bytes[0])), uintptr(len(val.Value)))
+	// if sysret < 0 {
+	// 	return fmt.Errorf("error: %v", syscall.Errno(-sysret))
+	// }
+	//
+
+	fmt.Println(val.Value)
 
 	return nil
 }
 
 func (g *Gorth) Dump() error {
-	// this function will print the topmost element of the stack and drop it
-	val, err := g.Pop()
-
+	err := g.Print()
 	if err != nil {
 		return err
 	}
 
-	fmt.Println(val.Value)
+	err = g.Drop()
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -317,9 +378,300 @@ func (g *Gorth) Multiply() error {
 	return nil
 }
 
+func (g *Gorth) Divide() error {
+	val1, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	val2, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	if val1.Type == INT && val2.Type == INT {
+		result1, err := strconv.Atoi(val1.Value)
+		if err != nil {
+			return err
+		}
+		result2, err := strconv.Atoi(val2.Value)
+		if err != nil {
+			return err
+		}
+
+		result := result2 / result1
+		g.Push(StackElement{Type: INT, Value: fmt.Sprintf("%v", result), Position: val2.Position})
+	} else if val1.Type == FLOAT && val2.Type == FLOAT {
+		result1, err := strconv.ParseFloat(val1.Value, 64)
+		if err != nil {
+			return err
+		}
+		result2, err := strconv.ParseFloat(val2.Value, 64)
+		if err != nil {
+			return err
+		}
+		result := result2 / result1
+		g.Push(StackElement{Type: FLOAT, Value: fmt.Sprintf("%f", result), Position: val2.Position})
+	} else if val1.Type == INT && val2.Type == FLOAT || val1.Type == FLOAT && val2.Type == INT {
+		result1, err := strconv.ParseFloat(val1.Value, 64)
+		if err != nil {
+			return err
+		}
+		result2, err := strconv.ParseFloat(val2.Value, 64)
+		if err != nil {
+			return err
+		}
+		result := result2 / result1
+		g.Push(StackElement{Type: FLOAT, Value: fmt.Sprintf("%f", result), Position: val2.Position})
+	} else {
+		return fmt.Errorf("error: cannot divide %s and %s", tokenMap[val1.Type], tokenMap[val2.Type])
+	}
+
+	return nil
+}
+
+func (g *Gorth) Pow() error {
+	val1, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	val2, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	if val1.Type == INT && val2.Type == INT {
+		result1, err := strconv.ParseFloat(val1.Value, 64)
+		if err != nil {
+			return err
+		}
+		result2, err := strconv.ParseFloat(val2.Value, 64)
+		if err != nil {
+			return err
+		}
+
+		result := math.Pow(result2, result1)
+		g.Push(StackElement{Type: INT, Value: fmt.Sprintf("%v", result), Position: val2.Position})
+	} else if val1.Type == FLOAT && val2.Type == FLOAT {
+		result1, err := strconv.ParseFloat(val1.Value, 64)
+		if err != nil {
+			return err
+		}
+		result2, err := strconv.ParseFloat(val2.Value, 64)
+		if err != nil {
+			return err
+		}
+		result := math.Pow(result2, result1)
+		g.Push(StackElement{Type: FLOAT, Value: fmt.Sprintf("%f", result), Position: val2.Position})
+	} else if val1.Type == INT && val2.Type == FLOAT || val1.Type == FLOAT && val2.Type == INT {
+		result1, err := strconv.ParseFloat(val1.Value, 64)
+		if err != nil {
+			return err
+		}
+		result2, err := strconv.ParseFloat(val2.Value, 64)
+		if err != nil {
+			return err
+		}
+		result := math.Pow(result2, result1)
+		g.Push(StackElement{Type: FLOAT, Value: fmt.Sprintf("%f", result), Position: val2.Position})
+	} else {
+		return fmt.Errorf("error: cannot exponentiate %s and %s", tokenMap[val1.Type], tokenMap[val2.Type])
+	}
+
+	return nil
+}
+
+func (g *Gorth) Mod() error {
+	val1, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	val2, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	if val1.Type == INT && val2.Type == INT {
+		result1, err := strconv.Atoi(val1.Value)
+		if err != nil {
+			return err
+		}
+		result2, err := strconv.Atoi(val2.Value)
+		if err != nil {
+			return err
+		}
+
+		result := result2 % result1
+		g.Push(StackElement{Type: INT, Value: fmt.Sprintf("%v", result), Position: val2.Position})
+	} else {
+		return fmt.Errorf("error: cannot perform module on %s and %s", tokenMap[val1.Type], tokenMap[val2.Type])
+	}
+
+	return nil
+}
+
+func (g *Gorth) Increment() error {
+	val, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	if val.Type != INT && val.Type != FLOAT {
+		return fmt.Errorf("error: cannot increment %s", tokenMap[val.Type])
+	}
+
+	if val.Type == INT {
+		result, err := strconv.Atoi(val.Value)
+		if err != nil {
+			return err
+		}
+		g.Push(StackElement{Type: INT, Value: fmt.Sprintf("%v", result+1), Position: val.Position})
+	} else if val.Type == FLOAT {
+		result, err := strconv.ParseFloat(val.Value, 64)
+		if err != nil {
+			return err
+		}
+		g.Push(StackElement{Type: FLOAT, Value: fmt.Sprintf("%f", result+1.0), Position: val.Position})
+	} else {
+		return fmt.Errorf("error: cannot increment %s", tokenMap[val.Type])
+	}
+
+	return nil
+}
+
+func (g *Gorth) Decrement() error {
+	val, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	if val.Type != INT && val.Type != FLOAT {
+		return fmt.Errorf("error: cannot decrement %s", tokenMap[val.Type])
+	}
+
+	if val.Type == INT {
+		result, err := strconv.Atoi(val.Value)
+		if err != nil {
+			return err
+		}
+		g.Push(StackElement{Type: INT, Value: fmt.Sprintf("%v", result-1), Position: val.Position})
+	} else if val.Type == FLOAT {
+		result, err := strconv.ParseFloat(val.Value, 64)
+		if err != nil {
+			return err
+		}
+		g.Push(StackElement{Type: FLOAT, Value: fmt.Sprintf("%f", result-1.0), Position: val.Position})
+	} else {
+		return fmt.Errorf("error: cannot decrement %s", tokenMap[val.Type])
+	}
+
+	return nil
+}
+
+func (g *Gorth) Drop() error {
+	if len(g.ExecutionStack) == 0 {
+		return fmt.Errorf("error: cannot drop from an empty stack")
+	}
+
+	_, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (g *Gorth) Swap() error {
+	if len(g.ExecutionStack) < 2 {
+		return fmt.Errorf("error: cannot swap with less than 2 elements in the stack")
+	}
+
+	val1, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	val2, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	g.Push(val1)
+	g.Push(val2)
+
+	return nil
+}
+
+func (g *Gorth) Dup() error {
+	if len(g.ExecutionStack) == 0 {
+		return fmt.Errorf("error: cannot duplicate from an empty stack")
+	}
+
+	val, err := g.Peek()
+	if err != nil {
+		return err
+	}
+
+	g.Push(val)
+
+	return nil
+}
+
+func (g *Gorth) Over() error {
+	if len(g.ExecutionStack) < 2 {
+		return fmt.Errorf("error: cannot perform over with less than 2 elements in the stack")
+	}
+
+	val1, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	val2, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	g.Push(val2)
+	g.Push(val1)
+	g.Push(val2)
+
+	return nil
+}
+
+func (g *Gorth) Rot() error {
+	if len(g.ExecutionStack) < 3 {
+		return fmt.Errorf("error: cannot perform rot with less than 3 elements in the stack")
+	}
+
+	val1, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	val2, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	val3, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	g.Push(val2)
+	g.Push(val1)
+	g.Push(val3)
+
+	return nil
+}
+
 func (g *Gorth) ExecuteStack(p []StackElement) {
 	for _, e := range p {
 		switch e.Type {
+		// MISC OPERATIONS
 		case PRINT_OP:
 			err := g.Print()
 			if err != nil {
@@ -330,6 +682,8 @@ func (g *Gorth) ExecuteStack(p []StackElement) {
 			if err != nil {
 				panic(err)
 			}
+
+		// ARITHMETIC OPERATIONS
 		case ADD_OP:
 			err := g.Add()
 			if err != nil {
@@ -345,6 +699,58 @@ func (g *Gorth) ExecuteStack(p []StackElement) {
 			if err != nil {
 				panic(err)
 			}
+		case DIV_OP:
+			err := g.Divide()
+			if err != nil {
+				panic(err)
+			}
+		case POW_OP:
+			err := g.Pow()
+			if err != nil {
+				panic(err)
+			}
+		case MOD_OP:
+			err := g.Mod()
+			if err != nil {
+				panic(err)
+			}
+		case INC_OP:
+			err := g.Increment()
+			if err != nil {
+				panic(err)
+			}
+		case DEC_OP:
+			err := g.Decrement()
+			if err != nil {
+				panic(err)
+			}
+
+		// STACK OPERATIONS
+		case DROP_OP:
+			err := g.Drop()
+			if err != nil {
+				panic(err)
+			}
+		case SWAP_OP:
+			err := g.Swap()
+			if err != nil {
+				panic(err)
+			}
+		case DUP_OP:
+			err := g.Dup()
+			if err != nil {
+				panic(err)
+			}
+		case OVER_OP:
+			err := g.Over()
+			if err != nil {
+				panic(err)
+			}
+		case ROT_OP:
+			err := g.Rot()
+			if err != nil {
+				panic(err)
+			}
 		default:
 			g.Push(e)
 		}
@@ -356,7 +762,7 @@ func (g *Gorth) ExecuteStack(p []StackElement) {
 		}
 	}
 	if g.DebugMode {
-		fmt.Println(g.ExecutionStack)
+		fmt.Println("Program Stack at the end of execution: \n\t", g.ExecutionStack)
 	}
 }
 
@@ -454,12 +860,12 @@ func (l *Lexer) lexIdentifier() (Token, string) {
 		r, _, err := l.reader.ReadRune()
 		if err != nil {
 			if err == io.EOF {
-				// check if lit does not exist in identifierMap
-				if _, ok := identifierMap[lit]; !ok {
+				// check if lit does not exist in operatorMap
+				if _, ok := operatorMap[lit]; !ok {
 					panic(fmt.Errorf("unknown identifier: %s at line %d column %d", lit, l.pos.line, l.pos.column))
 				}
 
-				return identifierMap[lit], lit
+				return operatorMap[lit], lit
 			}
 		}
 
@@ -469,12 +875,12 @@ func (l *Lexer) lexIdentifier() (Token, string) {
 		} else {
 			l.backup()
 
-			// check if lit does not exist in identifierMap
-			if _, ok := identifierMap[lit]; !ok {
+			// check if lit does not exist in operatorMap
+			if _, ok := operatorMap[lit]; !ok {
 				panic(fmt.Errorf("unknown identifier: %s at line %d column %d", lit, l.pos.line, l.pos.column))
 			}
 
-			return identifierMap[lit], lit
+			return operatorMap[lit], lit
 		}
 	}
 }
@@ -512,7 +918,7 @@ func (l *Lexer) lexNumber() (Token, string) {
 
 		if unicode.IsDigit(r) {
 			lit += string(r)
-		} else if isDecimal(r) {
+		} else if IsDecimal(r) {
 			if tokenType == INT {
 				tokenType = FLOAT
 				lit += string(r)
@@ -580,20 +986,122 @@ func (p *Parser) Parse(pos Position, tok Token, lit string) (StackElement, error
 	}
 }
 
+func (p *Parser) BuildAST(s []StackElement) (*Node, error) {
+	var stack []*Node
+	unaryOps := "print|drop|dup|inc|dec"
+	binaryOps := "+|-|*|/|mod|pow|swap|over"
+	ternaryOps := "rot"
+
+	// assert that all ops are included
+	unOps := strings.Split(unaryOps, "|")
+	for _, op := range unOps {
+		_, ok := operatorMap[op]
+		if !ok {
+			return nil, fmt.Errorf("unknown operator: %s, did you perhaps forget to add it to the operatorMap?", op)
+		}
+	}
+
+	binOps := strings.Split(binaryOps, "|")
+	for _, op := range binOps {
+		_, ok := operatorMap[op]
+		if !ok {
+			return nil, fmt.Errorf("unknown operator: %s, did you perhaps forget to add it to the operatorMap?", op)
+		}
+	}
+
+	terOps := strings.Split(ternaryOps, "|")
+	for _, op := range terOps {
+		_, ok := operatorMap[op]
+		if !ok {
+			return nil, fmt.Errorf("unknown operator: %s, did you perhaps forget to add it to the operatorMap?", op)
+		}
+	}
+
+	for _, element := range s {
+		if IsOperator(element.Value) {
+			switch {
+			case strings.Contains(unaryOps, element.Value):
+				if len(stack) < 1 {
+					return nil, fmt.Errorf("syntax error: %s requires at least 1 element on the stack\nline: %v col: %v", element.Value, element.Position.line, element.Position.column)
+				}
+
+				operand := stack[len(stack)-1]
+				stack = stack[:len(stack)-1] // Remove the operand from the stack
+				node := &Node{Value: element.Value, Left: operand}
+				stack = append(stack, node)
+			case strings.Contains(binaryOps, element.Value):
+				if len(stack) < 2 {
+					return nil, fmt.Errorf("syntax error: %s requires at least 2 elements on the stack\nline: %v col: %v", element.Value, element.Position.line, element.Position.column)
+				}
+
+				right := stack[len(stack)-1]
+				left := stack[len(stack)-2]
+				node := &Node{Value: element.Value, Left: left, Right: right}
+				stack = stack[:len(stack)-2] // Remove two operands from the stack
+				stack = append(stack, node)
+			case strings.Contains(ternaryOps, element.Value):
+				return nil, fmt.Errorf("ternary operators are not supported yet")
+			}
+		} else {
+			stack = append(stack, &Node{Value: element.Value})
+		}
+	}
+
+	if len(stack) != 1 {
+		return nil, fmt.Errorf("invalid expression")
+	}
+
+	return stack[0], nil
+}
+
+func (p *Parser) PrintAST(root *Node, indent string) {
+	if root == nil {
+		return
+	}
+
+	fmt.Printf("%s%s\n", indent, root.Value)
+	p.PrintAST(root.Left, indent+"  ")
+	p.PrintAST(root.Right, indent+"  ")
+}
+
 /**
  * PARSER END
  */
 
 func main() {
-	file, err := os.Open("./examples/hello_world.gorth")
+	// get the other arguments even if there are not in the correct order
+	debugMode := flag.Bool("d", false, "enable debug mode")
+	strictMode := flag.Bool("s", false, "enable strict mode")
+	filePath := flag.String("f", "", "path to the file to execute")
+	flag.Parse()
+
+	// check if the first argument is a .gorth file
+	if !strings.HasSuffix(*filePath, ".gorth") {
+		panic(fmt.Sprintf("File %s is not a .gorth file", *filePath))
+	}
+
+	// check if the file exists
+	_, err := os.Stat(*filePath)
+	if os.IsNotExist(err) {
+		panic(fmt.Sprintf("File %s does not exist", *filePath))
+	}
+
+	file, err := os.Open(*filePath)
 
 	if err != nil {
 		panic(err)
 	}
 
+	args := os.Args[1:]
+
+	// check if there are no arguments
+	if len(args) == 0 {
+		PrintUsage()
+		return
+	}
 	lexer := NewLexer(file)
 	parser := NewParser()
-	gorth := NewGorth()
+	gorth := NewGorth(*strictMode, *debugMode)
 	var program []StackElement = make([]StackElement, 0)
 
 	for {
@@ -612,6 +1120,17 @@ func main() {
 		program = append(program, element)
 
 		// fmt.Printf("Token: %v, Literal: %s, Line: %d, Column: %d\n", tokenMap[tok], lit, pos.line, pos.column)
+	}
+
+	// build the AST
+	root, err := parser.BuildAST(program)
+	if err != nil {
+		panic(fmt.Errorf("error building AST: %v", err))
+	}
+
+	// print the AST
+	if gorth.DebugMode {
+		parser.PrintAST(root, "")
 	}
 
 	gorth.ExecuteStack(program)
