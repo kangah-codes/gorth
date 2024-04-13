@@ -1,2 +1,1 @@
-# print hello world to the console and drop the value
-"Hello World" print drop
+"world" "hello " + 1000 * print
