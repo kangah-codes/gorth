@@ -9,7 +9,9 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"syscall"
 	"unicode"
+	"unsafe"
 )
 
 const (
@@ -118,6 +120,249 @@ type Node struct {
 	Right *Node
 }
 
+type ArithmeticFunc func(float64, float64) (float64, error)
+
+var Add ArithmeticFunc = func(a, b float64) (float64, error) {
+	return a + b, nil
+}
+
+var Multiply ArithmeticFunc = func(a, b float64) (float64, error) {
+	return a * b, nil
+}
+
+var Subtract ArithmeticFunc = func(a, b float64) (float64, error) {
+	return b - a, nil
+}
+
+var Divide ArithmeticFunc = func(a, b float64) (float64, error) {
+	return b / a, nil
+}
+
+var Pow ArithmeticFunc = func(a, b float64) (float64, error) {
+	return math.Pow(b, a), nil
+}
+
+var Mod ArithmeticFunc = func(a, b float64) (float64, error) {
+	return math.Mod(b, a), nil
+}
+
+var Decrement ArithmeticFunc = func(a, b float64) (float64, error) {
+	return b - a, nil
+}
+
+func performIntArithmetic(val1, val2 StackElement, op ArithmeticFunc) (StackElement, error) {
+	result1, err1 := strconv.Atoi(val1.Value)
+	if err1 != nil {
+		return StackElement{}, err1
+	}
+
+	result2, err2 := strconv.Atoi(val2.Value)
+	if err2 != nil {
+		return StackElement{}, err2
+	}
+
+	result, err := op(float64(result2), float64(result1))
+	if err != nil {
+		return StackElement{}, err
+	}
+
+	return StackElement{Type: INT, Value: strconv.Itoa(int(result)), Position: val2.Position}, nil
+}
+
+func performFloatArithmetic(val1, val2 StackElement, op ArithmeticFunc) (StackElement, error) {
+	result1, err1 := strconv.ParseFloat(val1.Value, 64)
+	if err1 != nil {
+		return StackElement{}, err1
+	}
+
+	result2, err2 := strconv.ParseFloat(val2.Value, 64)
+	if err2 != nil {
+		return StackElement{}, err2
+	}
+
+	result, err := op(result2, result1)
+	if err != nil {
+		return StackElement{}, err
+	}
+
+	return StackElement{Type: FLOAT, Value: fmt.Sprintf("%f", result), Position: val2.Position}, nil
+}
+
+func performStringArithmetic(val1, val2 StackElement) (StackElement, error) {
+	result := val2.Value + val1.Value
+	return StackElement{Type: STRING, Value: result, Position: val2.Position}, nil
+}
+
+func performMixedArithmetic(val1, val2 StackElement, op ArithmeticFunc) (StackElement, error) {
+	result1, err1 := strconv.ParseFloat(val1.Value, 64)
+	if err1 != nil {
+		return StackElement{}, err1
+	}
+
+	result2, err2 := strconv.ParseFloat(val2.Value, 64)
+	if err2 != nil {
+		return StackElement{}, err2
+	}
+
+	result, err := op(result2, result1)
+	if err != nil {
+		return StackElement{}, err
+	}
+
+	return StackElement{Type: FLOAT, Value: fmt.Sprintf("%f", result), Position: val2.Position}, nil
+}
+
+func performVariableArithmetic(g *Gorth, val1, val2 StackElement, op ArithmeticFunc) (StackElement, error) {
+	if _, ok := (*g.VariableMap)[val1.Value]; !ok {
+		return StackElement{}, fmt.Errorf("error: variable %s is not defined", val1.Value)
+	}
+
+	if _, ok := (*g.VariableMap)[val2.Value]; !ok {
+		return StackElement{}, fmt.Errorf("error: variable %s is not defined", val2.Value)
+	}
+
+	val1Value := (*g.VariableMap)[val1.Value].Value
+	val2Value := (*g.VariableMap)[val2.Value].Value
+
+	var result float64
+	var err error
+
+	switch {
+	case val1Value.Type == INT && val2Value.Type == INT:
+		result1, err1 := strconv.Atoi(val1Value.Value)
+		if err1 != nil {
+			return StackElement{}, err1
+		}
+
+		result2, err2 := strconv.Atoi(val2Value.Value)
+		if err2 != nil {
+			return StackElement{}, err2
+		}
+
+		result, err = op(float64(result1), float64(result2))
+	case val1Value.Type == FLOAT && val2Value.Type == FLOAT:
+		result1, err1 := strconv.ParseFloat(val1Value.Value, 64)
+		if err1 != nil {
+			return StackElement{}, err1
+		}
+
+		result2, err2 := strconv.ParseFloat(val2Value.Value, 64)
+		if err2 != nil {
+			return StackElement{}, err2
+		}
+
+		result, err = op(result1, result2)
+	case (val1Value.Type == INT && val2Value.Type == FLOAT) || (val1Value.Type == FLOAT && val2Value.Type == INT):
+		result1, err1 := strconv.ParseFloat(val1Value.Value, 64)
+		if err1 != nil {
+			return StackElement{}, err1
+		}
+
+		result2, err2 := strconv.ParseFloat(val2Value.Value, 64)
+		if err2 != nil {
+			return StackElement{}, err2
+		}
+
+		result, err = op(result1, result2)
+	case val1Value.Type == STRING && val2Value.Type == STRING:
+		result := val1Value.Value + val2Value.Value
+
+		(*g.VariableMap)[val2.Value] = Variable{Name: val2.Value, Value: StackElement{Type: STRING, Value: result, Position: val2.Position}, Const: false}
+		return StackElement{Type: VARIABLE, Value: val2.Value, Position: val2.Position}, nil
+	default:
+		return StackElement{}, fmt.Errorf("error: cannot perform %s on %s and %s", fmt.Sprintf("%v", op), tokenMap[val1Value.Type], tokenMap[val2Value.Type])
+	}
+
+	if err != nil {
+		return StackElement{}, err
+	}
+
+	var resultType Token
+	if val1Value.Type == INT && val2Value.Type == INT {
+		resultType = INT
+	} else {
+		resultType = FLOAT
+	}
+
+	(*g.VariableMap)[val2.Value] = Variable{Name: val2.Value, Value: StackElement{Type: resultType, Value: fmt.Sprintf("%v", result), Position: val2.Position}, Const: false}
+	return StackElement{Type: VARIABLE, Value: val2.Value, Position: val2.Position}, nil
+}
+
+func performVariableAndValueArithmetic(g *Gorth, val1, val2 StackElement, op ArithmeticFunc) (StackElement, error) {
+	if _, ok := (*g.VariableMap)[val1.Value]; !ok {
+		return StackElement{}, fmt.Errorf("error: variable %s is not defined", val1.Value)
+	}
+
+	val1Value := (*g.VariableMap)[val1.Value].Value
+
+	var result float64
+	var err error
+
+	fmt.Println("VAL 1: ", val1Value, " Type: ", tokenMap[val1Value.Type])
+	fmt.Println("VAL 2: ", val2, " Type: ", tokenMap[val2.Type])
+
+	switch {
+	case val1Value.Type == INT && val2.Type == INT:
+		result1, err1 := strconv.Atoi(val1Value.Value)
+		if err1 != nil {
+			return StackElement{}, err1
+		}
+
+		result2, err2 := strconv.Atoi(val2.Value)
+		if err2 != nil {
+			return StackElement{}, err2
+		}
+
+		result, err = op(float64(result2), float64(result1))
+	case val1Value.Type == FLOAT && val2.Type == FLOAT:
+		result1, err1 := strconv.ParseFloat(val1Value.Value, 64)
+		if err1 != nil {
+			return StackElement{}, err1
+		}
+
+		result2, err2 := strconv.ParseFloat(val2.Value, 64)
+		if err2 != nil {
+			return StackElement{}, err2
+		}
+
+		result, err = op(result2, result1)
+	case (val1Value.Type == INT && val2.Type == FLOAT) || (val1Value.Type == FLOAT && val2.Type == INT):
+		result1, err1 := strconv.ParseFloat(val1Value.Value, 64)
+		if err1 != nil {
+			return StackElement{}, err1
+		}
+
+		result2, err2 := strconv.ParseFloat(val2.Value, 64)
+		if err2 != nil {
+			return StackElement{}, err2
+		}
+
+		// did this because if the op is subtraction or division, the order matters
+		result, err = op(result2, result1)
+	case val1Value.Type == STRING && val2.Type == STRING:
+		result := val2.Value + val1Value.Value
+
+		(*g.VariableMap)[val1.Value] = Variable{Name: val1.Value, Value: StackElement{Type: STRING, Value: result, Position: val1Value.Position}, Const: false}
+		return StackElement{Type: VARIABLE, Value: val1.Value, Position: val1Value.Position}, nil
+	default:
+		return StackElement{}, fmt.Errorf("error: cannot perform %s on %s and %s", fmt.Sprintf("%v", op), tokenMap[val1Value.Type], tokenMap[val2.Type])
+	}
+
+	if err != nil {
+		return StackElement{}, err
+	}
+
+	var resultType Token
+	if val1Value.Type == INT && val2.Type == INT {
+		resultType = INT
+	} else {
+		resultType = FLOAT
+	}
+
+	(*g.VariableMap)[val1.Value] = Variable{Name: val1.Value, Value: StackElement{Type: resultType, Value: fmt.Sprintf("%v", result), Position: val1Value.Position}, Const: false}
+	return StackElement{Type: VARIABLE, Value: val1.Value, Position: val1Value.Position}, nil
+}
+
 func IsOperator(s string) bool {
 	_, ok := operatorMap[s]
 	return ok
@@ -172,6 +417,24 @@ func (g *Gorth) Pop() (StackElement, error) {
 	return element, nil
 }
 
+func (g *Gorth) PopValues() (StackElement, StackElement, error) {
+	if len(g.ExecutionStack) < 2 {
+		return StackElement{}, StackElement{}, fmt.Errorf("error: cannot pop values from an empty stack")
+	}
+
+	val1, err := g.Pop()
+	if err != nil {
+		return StackElement{}, StackElement{}, err
+	}
+
+	val2, err := g.Pop()
+	if err != nil {
+		return StackElement{}, StackElement{}, err
+	}
+
+	return val1, val2, nil
+}
+
 func (g *Gorth) Push(e StackElement) {
 	g.ExecutionStack = append(g.ExecutionStack, e)
 }
@@ -188,20 +451,26 @@ func (g *Gorth) Print() error {
 	// print the top of the stack
 	val, err := g.Peek()
 
+	if val.Type == VARIABLE {
+		// check if the variable is defined
+		if _, ok := (*g.VariableMap)[val.Value]; !ok {
+			return fmt.Errorf("error: variable %s is not defined", val.Value)
+		}
+
+		val = (*g.VariableMap)[val.Value].Value
+	}
+
 	if err != nil {
 		return err
 	}
 
-	// var sysret syscall.Errno
+	var sysret syscall.Errno
 
-	// bytes := []byte(val.Value + "\n")
-	// _, _, sysret = syscall.Syscall(syscall.SYS_WRITE, 1, uintptr(unsafe.Pointer(&bytes[0])), uintptr(len(val.Value)))
-	// if sysret < 0 {
-	// 	return fmt.Errorf("error: %v", syscall.Errno(-sysret))
-	// }
-	//
-
-	fmt.Println(val.Value)
+	bytes := append([]byte(val.Value), '\n')
+	_, _, sysret = syscall.Syscall(syscall.SYS_WRITE, 1, uintptr(unsafe.Pointer(&bytes[0])), uintptr(len(bytes)))
+	if sysret != 0 {
+		return fmt.Errorf("error: %v", syscall.Errno(-sysret))
+	}
 
 	return nil
 }
@@ -220,318 +489,114 @@ func (g *Gorth) Dump() error {
 	return nil
 }
 
+func (g *Gorth) PerformArithmetic(val1, val2 StackElement, op ArithmeticFunc) (StackElement, error) {
+	switch {
+	case val1.Type == INT && val2.Type == INT:
+		return performIntArithmetic(val1, val2, op)
+	case val1.Type == FLOAT && val2.Type == FLOAT:
+		return performFloatArithmetic(val1, val2, op)
+	case val1.Type == STRING && val2.Type == STRING:
+		return performStringArithmetic(val1, val2)
+	case (val1.Type == INT && val2.Type == FLOAT) || (val1.Type == FLOAT && val2.Type == INT):
+		return performMixedArithmetic(val1, val2, op)
+	case val1.Type == VARIABLE && val2.Type == VARIABLE:
+		return performVariableArithmetic(g, val1, val2, op)
+	case val1.Type == VARIABLE:
+		return performVariableAndValueArithmetic(g, val1, val2, op)
+	case val2.Type == VARIABLE:
+		return performVariableAndValueArithmetic(g, val2, val1, op)
+	default:
+		return StackElement{}, fmt.Errorf("error: cannot perform op on %s and %s", tokenMap[val1.Type], tokenMap[val2.Type])
+	}
+}
+
 func (g *Gorth) Add() error {
-	val1, err := g.Pop()
+	val1, val2, err := g.PopValues()
 	if err != nil {
 		return err
 	}
 
-	val2, err := g.Pop()
+	result, err := g.PerformArithmetic(val1, val2, Add)
 	if err != nil {
 		return err
 	}
 
-	if val1.Type == INT && val2.Type == INT {
-		// convert values to integers
-		result1, err1 := strconv.Atoi(val1.Value)
-		if err1 != nil {
-			return err1
-		}
-		result2, err2 := strconv.Atoi(val2.Value)
-		if err2 != nil {
-			return err2
-		}
-		result := result1 + result2
-		g.Push(StackElement{Type: INT, Value: strconv.Itoa(result), Position: val2.Position})
-	} else if val1.Type == FLOAT && val2.Type == FLOAT {
-		// convert values to floats
-		result1, err1 := strconv.ParseFloat(val1.Value, 64)
-		if err1 != nil {
-			return err1
-		}
-		result2, err2 := strconv.ParseFloat(val2.Value, 64)
-		if err2 != nil {
-			return err2
-		}
-
-		result := result1 + result2
-		g.Push(StackElement{Type: FLOAT, Value: fmt.Sprintf("%f", result), Position: val2.Position})
-	} else if val1.Type == STRING && val2.Type == STRING {
-		result := val1.Value + val2.Value
-		g.Push(StackElement{Type: STRING, Value: result, Position: val2.Position})
-	} else if val1.Type == INT && val2.Type == FLOAT || val1.Type == FLOAT && val2.Type == INT {
-		// convert values to floats
-		result1, err1 := strconv.ParseFloat(val1.Value, 64)
-		if err1 != nil {
-			return err1
-		}
-		result2, err2 := strconv.ParseFloat(val2.Value, 64)
-		if err2 != nil {
-			return err2
-		}
-		result := result1 + result2
-		g.Push(StackElement{Type: FLOAT, Value: fmt.Sprintf("%f", result), Position: val2.Position})
-	} else {
-		return fmt.Errorf("error: cannot add %s and %s", tokenMap[val1.Type], tokenMap[val2.Type])
-	}
-
+	g.Push(result)
 	return nil
 }
 
 func (g *Gorth) Subtract() error {
-	val1, err := g.Pop()
+	val1, val2, err := g.PopValues()
 	if err != nil {
 		return err
 	}
 
-	val2, err := g.Pop()
+	result, err := g.PerformArithmetic(val1, val2, Subtract)
 	if err != nil {
 		return err
 	}
 
-	if val1.Type == INT && val2.Type == INT {
-		result1, err := strconv.Atoi(val1.Value)
-		if err != nil {
-			return err
-		}
-		result2, err := strconv.Atoi(val2.Value)
-		if err != nil {
-			return err
-		}
-
-		result := result2 - result1
-		g.Push(StackElement{Type: INT, Value: fmt.Sprintf("%v", result), Position: val2.Position})
-	} else if val1.Type == FLOAT && val2.Type == FLOAT {
-		result1, err := strconv.ParseFloat(val1.Value, 64)
-		if err != nil {
-			return err
-		}
-		result2, err := strconv.ParseFloat(val2.Value, 64)
-		if err != nil {
-			return err
-		}
-		result := result2 - result1
-		g.Push(StackElement{Type: FLOAT, Value: fmt.Sprintf("%f", result), Position: val2.Position})
-	} else if val1.Type == INT && val2.Type == FLOAT || val1.Type == FLOAT && val2.Type == INT {
-		result1, err := strconv.ParseFloat(val1.Value, 64)
-		if err != nil {
-			return err
-		}
-		result2, err := strconv.ParseFloat(val2.Value, 64)
-		if err != nil {
-			return err
-		}
-		result := result2 - result1
-		g.Push(StackElement{Type: FLOAT, Value: fmt.Sprintf("%f", result), Position: val2.Position})
-	} else {
-		return fmt.Errorf("error: cannot subtract %s and %s", tokenMap[val1.Type], tokenMap[val2.Type])
-	}
-
+	g.Push(result)
 	return nil
 }
 
 func (g *Gorth) Multiply() error {
-	val1, err := g.Pop()
+	val1, val2, err := g.PopValues()
 	if err != nil {
 		return err
 	}
 
-	val2, err := g.Pop()
+	result, err := g.PerformArithmetic(val1, val2, Multiply)
 	if err != nil {
 		return err
 	}
 
-	if val1.Type == INT && val2.Type == INT {
-		result1, err := strconv.Atoi(val1.Value)
-		if err != nil {
-			return err
-		}
-		result2, err := strconv.Atoi(val2.Value)
-		if err != nil {
-			return err
-		}
-		result := result1 * result2
-		g.Push(StackElement{Type: INT, Value: fmt.Sprintf("%v", result), Position: val2.Position})
-	} else if val1.Type == FLOAT && val2.Type == FLOAT {
-		result1, err := strconv.ParseFloat(val1.Value, 64)
-		if err != nil {
-			return err
-		}
-		result2, err := strconv.ParseFloat(val2.Value, 64)
-		if err != nil {
-			return err
-		}
-		result := result1 * result2
-		g.Push(StackElement{Type: FLOAT, Value: fmt.Sprintf("%f", result), Position: val2.Position})
-	} else if val1.Type == INT && val2.Type == FLOAT || val1.Type == FLOAT && val2.Type == INT {
-		result1, err := strconv.ParseFloat(val1.Value, 64)
-		if err != nil {
-			return err
-		}
-		result2, err := strconv.ParseFloat(val2.Value, 64)
-		if err != nil {
-			return err
-		}
-		result := result1 * result2
-		g.Push(StackElement{Type: FLOAT, Value: fmt.Sprintf("%f", result), Position: val2.Position})
-	} else if val1.Type == STRING && val2.Type == INT {
-		val, err := strconv.Atoi(val2.Value)
-		if err != nil {
-			return err
-		}
-		result := ""
-		for i := 0; i < val; i++ {
-			result += val1.Value
-		}
-		g.Push(StackElement{Type: STRING, Value: result, Position: val2.Position})
-	} else if val1.Type == INT && val2.Type == STRING {
-		val, err := strconv.Atoi(val1.Value)
-		if err != nil {
-			return err
-		}
-		result := ""
-		for i := 0; i < val; i++ {
-			result += val2.Value
-		}
-		g.Push(StackElement{Type: STRING, Value: result, Position: val2.Position})
-	} else {
-		return fmt.Errorf("error: cannot multiply %s and %s", tokenMap[val1.Type], tokenMap[val2.Type])
-	}
-
+	g.Push(result)
 	return nil
 }
 
 func (g *Gorth) Divide() error {
-	val1, err := g.Pop()
+	val1, val2, err := g.PopValues()
 	if err != nil {
 		return err
 	}
 
-	val2, err := g.Pop()
+	result, err := g.PerformArithmetic(val1, val2, Divide)
 	if err != nil {
 		return err
 	}
 
-	if val1.Type == INT && val2.Type == INT {
-		result1, err := strconv.Atoi(val1.Value)
-		if err != nil {
-			return err
-		}
-		result2, err := strconv.Atoi(val2.Value)
-		if err != nil {
-			return err
-		}
-
-		result := result2 / result1
-		g.Push(StackElement{Type: INT, Value: fmt.Sprintf("%v", result), Position: val2.Position})
-	} else if val1.Type == FLOAT && val2.Type == FLOAT {
-		result1, err := strconv.ParseFloat(val1.Value, 64)
-		if err != nil {
-			return err
-		}
-		result2, err := strconv.ParseFloat(val2.Value, 64)
-		if err != nil {
-			return err
-		}
-		result := result2 / result1
-		g.Push(StackElement{Type: FLOAT, Value: fmt.Sprintf("%f", result), Position: val2.Position})
-	} else if val1.Type == INT && val2.Type == FLOAT || val1.Type == FLOAT && val2.Type == INT {
-		result1, err := strconv.ParseFloat(val1.Value, 64)
-		if err != nil {
-			return err
-		}
-		result2, err := strconv.ParseFloat(val2.Value, 64)
-		if err != nil {
-			return err
-		}
-		result := result2 / result1
-		g.Push(StackElement{Type: FLOAT, Value: fmt.Sprintf("%f", result), Position: val2.Position})
-	} else {
-		return fmt.Errorf("error: cannot divide %s and %s", tokenMap[val1.Type], tokenMap[val2.Type])
-	}
-
+	g.Push(result)
 	return nil
 }
 
 func (g *Gorth) Pow() error {
-	val1, err := g.Pop()
+	val1, val2, err := g.PopValues()
 	if err != nil {
 		return err
 	}
 
-	val2, err := g.Pop()
+	result, err := g.PerformArithmetic(val1, val2, Pow)
 	if err != nil {
 		return err
 	}
 
-	if val1.Type == INT && val2.Type == INT {
-		result1, err := strconv.ParseFloat(val1.Value, 64)
-		if err != nil {
-			return err
-		}
-		result2, err := strconv.ParseFloat(val2.Value, 64)
-		if err != nil {
-			return err
-		}
-
-		result := math.Pow(result2, result1)
-		g.Push(StackElement{Type: INT, Value: fmt.Sprintf("%v", result), Position: val2.Position})
-	} else if val1.Type == FLOAT && val2.Type == FLOAT {
-		result1, err := strconv.ParseFloat(val1.Value, 64)
-		if err != nil {
-			return err
-		}
-		result2, err := strconv.ParseFloat(val2.Value, 64)
-		if err != nil {
-			return err
-		}
-		result := math.Pow(result2, result1)
-		g.Push(StackElement{Type: FLOAT, Value: fmt.Sprintf("%f", result), Position: val2.Position})
-	} else if val1.Type == INT && val2.Type == FLOAT || val1.Type == FLOAT && val2.Type == INT {
-		result1, err := strconv.ParseFloat(val1.Value, 64)
-		if err != nil {
-			return err
-		}
-		result2, err := strconv.ParseFloat(val2.Value, 64)
-		if err != nil {
-			return err
-		}
-		result := math.Pow(result2, result1)
-		g.Push(StackElement{Type: FLOAT, Value: fmt.Sprintf("%f", result), Position: val2.Position})
-	} else {
-		return fmt.Errorf("error: cannot exponentiate %s and %s", tokenMap[val1.Type], tokenMap[val2.Type])
-	}
-
+	g.Push(result)
 	return nil
 }
 
 func (g *Gorth) Mod() error {
-	val1, err := g.Pop()
+	val1, val2, err := g.PopValues()
 	if err != nil {
 		return err
 	}
 
-	val2, err := g.Pop()
+	result, err := g.PerformArithmetic(val1, val2, Mod)
 	if err != nil {
 		return err
 	}
 
-	if val1.Type == INT && val2.Type == INT {
-		result1, err := strconv.Atoi(val1.Value)
-		if err != nil {
-			return err
-		}
-		result2, err := strconv.Atoi(val2.Value)
-		if err != nil {
-			return err
-		}
-
-		result := result2 % result1
-		g.Push(StackElement{Type: INT, Value: fmt.Sprintf("%v", result), Position: val2.Position})
-	} else {
-		return fmt.Errorf("error: cannot perform module on %s and %s", tokenMap[val1.Type], tokenMap[val2.Type])
-	}
-
+	g.Push(result)
 	return nil
 }
 
@@ -541,26 +606,12 @@ func (g *Gorth) Increment() error {
 		return err
 	}
 
-	if val.Type != INT && val.Type != FLOAT {
-		return fmt.Errorf("error: cannot increment %s", tokenMap[val.Type])
+	result, err := g.PerformArithmetic(val, StackElement{Type: INT, Value: "1", Position: val.Position}, Add)
+	if err != nil {
+		return err
 	}
 
-	if val.Type == INT {
-		result, err := strconv.Atoi(val.Value)
-		if err != nil {
-			return err
-		}
-		g.Push(StackElement{Type: INT, Value: fmt.Sprintf("%v", result+1), Position: val.Position})
-	} else if val.Type == FLOAT {
-		result, err := strconv.ParseFloat(val.Value, 64)
-		if err != nil {
-			return err
-		}
-		g.Push(StackElement{Type: FLOAT, Value: fmt.Sprintf("%f", result+1.0), Position: val.Position})
-	} else {
-		return fmt.Errorf("error: cannot increment %s", tokenMap[val.Type])
-	}
-
+	g.Push(result)
 	return nil
 }
 
@@ -570,26 +621,12 @@ func (g *Gorth) Decrement() error {
 		return err
 	}
 
-	if val.Type != INT && val.Type != FLOAT {
-		return fmt.Errorf("error: cannot decrement %s", tokenMap[val.Type])
+	result, err := g.PerformArithmetic(StackElement{Type: INT, Value: "1", Position: val.Position}, val, Decrement)
+	if err != nil {
+		return err
 	}
 
-	if val.Type == INT {
-		result, err := strconv.Atoi(val.Value)
-		if err != nil {
-			return err
-		}
-		g.Push(StackElement{Type: INT, Value: fmt.Sprintf("%v", result-1), Position: val.Position})
-	} else if val.Type == FLOAT {
-		result, err := strconv.ParseFloat(val.Value, 64)
-		if err != nil {
-			return err
-		}
-		g.Push(StackElement{Type: FLOAT, Value: fmt.Sprintf("%f", result-1.0), Position: val.Position})
-	} else {
-		return fmt.Errorf("error: cannot decrement %s", tokenMap[val.Type])
-	}
-
+	g.Push(result)
 	return nil
 }
 
@@ -598,9 +635,17 @@ func (g *Gorth) Drop() error {
 		return fmt.Errorf("error: cannot drop from an empty stack")
 	}
 
-	_, err := g.Pop()
+	val, err := g.Pop()
 	if err != nil {
 		return err
+	}
+
+	if val.Type == VARIABLE {
+		if _, ok := (*g.VariableMap)[val.Value]; !ok {
+			return fmt.Errorf("error: variable %s is not defined", val.Value)
+		}
+
+		delete(*g.VariableMap, val.Value)
 	}
 
 	return nil
@@ -709,14 +754,14 @@ func (g *Gorth) AssignVar() error {
 	}
 
 	// check if the variable is already defined
-	if _, ok := (*g.VariableMap)[val1.Value]; ok {
+	if _, ok := (*g.VariableMap)[val1.Value]; ok && (*g.VariableMap)[val1.Value].Const {
 		return fmt.Errorf("error: variable %s is already defined", val1.Value)
 	}
 
 	(*g.VariableMap)[val1.Value] = Variable{Name: val1.Value, Value: val2, Const: false}
 
 	// push the variable value to the stack
-	g.Push(StackElement{Type: VARIABLE, Value: val2.Value, Position: val2.Position})
+	g.Push(StackElement{Type: VARIABLE, Value: val1.Value, Position: val2.Position})
 
 	return nil
 }
@@ -941,60 +986,37 @@ func (l *Lexer) lexIdentifier() (Token, string) {
 
 			// check if lit does not exist in operatorMap
 			if !IsOperator(lit) {
-				// we need to read runes until we get to the next rune which is not a space and we can check if it's an = sign
-				var next_r rune
-				var counts int = 0
+				var nextR rune
+				var err error
+				var counts int
 
+				// Skip all whitespace runes until we get to the next rune
 				for {
-					// skip all whitespace runes until we get to the next rune
-					next_r, _, err = l.reader.ReadRune()
-
+					nextR, _, err = l.reader.ReadRune()
 					if err != nil {
 						if err == io.EOF {
 							break
 						}
-
 						panic(err)
 					}
 
-					if unicode.IsSpace(next_r) {
-						counts++
-						continue
+					if !unicode.IsSpace(nextR) {
+						break
 					}
-
-					break
+					counts++
 				}
 
-				// backup the reader
+				// Backup the reader
 				for i := 0; i < counts; i++ {
 					l.backup()
 				}
 
-				if next_r == '=' {
-					return VARIABLE, lit
-				} else {
-					return ILLEGAL, lit
-				}
+				return VARIABLE, lit
 			}
 
 			return operatorMap[lit], lit
 		}
 	}
-}
-
-func (l *Lexer) peekChar() rune {
-	r, _, err := l.reader.ReadRune()
-	if err != nil {
-		if err == io.EOF {
-			return 0
-		}
-
-		panic(err)
-	}
-
-	l.backup()
-
-	return r
 }
 
 func (l *Lexer) lexNumber() (Token, string) {
@@ -1141,7 +1163,6 @@ func (p *Parser) BuildAST(s []StackElement) (*Node, error) {
 				return nil, fmt.Errorf("ternary operators are not supported yet")
 			}
 		} else {
-			fmt.Printf("Added Element: %v\n", element.Value)
 			stack = append(stack, &Node{Value: element.Value})
 		}
 	}
@@ -1154,7 +1175,7 @@ func (p *Parser) BuildAST(s []StackElement) (*Node, error) {
 		stack = stack[:len(stack)-2]
 
 		// Create a new node for the binary operation
-		node := &Node{Value: "compound", Left: left, Right: right}
+		node := &Node{Value: "", Left: left, Right: right}
 
 		// Push the binary operation node onto the stack
 		stack = append(stack, node)
@@ -1243,10 +1264,11 @@ func main() {
 	// print the AST
 	if gorth.DebugMode {
 		root, err := gorth.Parser.BuildAST(program)
-		// build the AST
 		if err != nil {
 			panic(fmt.Errorf("error building AST: %v", err))
 		}
+
+		fmt.Println("Program AST: ")
 		gorth.Parser.PrintAST(root, "")
 	}
 
