@@ -22,6 +22,7 @@ const (
 	STRING
 	BOOL
 	FLOAT
+	VARIABLE
 
 	// MATH OPS
 	ADD_OP
@@ -43,6 +44,9 @@ const (
 	// OPERATORS
 	PRINT_OP
 	DUMP_OP
+
+	// ASSIGNMENT
+	ASSIGN_OP
 )
 
 var operatorMap = map[string]Token{
@@ -57,6 +61,9 @@ var operatorMap = map[string]Token{
 	"dec": DEC_OP,
 	"mod": MOD_OP,
 	"pow": POW_OP,
+
+	// ASSIGNMENT
+	"=": ASSIGN_OP,
 
 	// STACK MANIPULATION
 	"drop": DROP_OP,
@@ -78,6 +85,7 @@ var tokenMap = map[Token]string{
 	STRING:     "STRING",
 	FLOAT:      "FLOAT",
 	BOOL:       "BOOL",
+	VARIABLE:   "VARIABLE",
 
 	// MATH OPS
 	ADD_OP: "ADD_OP",
@@ -92,6 +100,9 @@ var tokenMap = map[Token]string{
 	DUP_OP:  "DUP_OP",
 	OVER_OP: "OVER_OP",
 	ROT_OP:  "ROT_OP",
+
+	// ASSIGNMENT
+	ASSIGN_OP: "ASSIGN_OP",
 }
 
 type Token int
@@ -124,17 +135,29 @@ func PrintUsage() {
 	fmt.Println("    -s: optional enable strict mode")
 }
 
+type Variable struct {
+	Name  string
+	Value StackElement
+	Const bool
+}
+
 type Gorth struct {
 	StrictMode     bool
 	DebugMode      bool
 	ExecutionStack []StackElement
+	Parser         *Parser
+	Lexer          *Lexer
+	VariableMap    *map[string]Variable
 }
 
-func NewGorth(s bool, d bool) *Gorth {
+func NewGorth(s bool, d bool, p *Parser, l *Lexer) *Gorth {
 	return &Gorth{
 		StrictMode:     s,
 		DebugMode:      d,
 		ExecutionStack: make([]StackElement, 0),
+		Parser:         p,
+		Lexer:          l,
+		VariableMap:    &map[string]Variable{},
 	}
 }
 
@@ -668,6 +691,36 @@ func (g *Gorth) Rot() error {
 	return nil
 }
 
+func (g *Gorth) AssignVar() error {
+	if len(g.ExecutionStack) < 2 {
+		return fmt.Errorf("error: cannot assign variable with less than 2 elements in the stack")
+	}
+
+	// variable name
+	val1, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	// variable value
+	val2, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	// check if the variable is already defined
+	if _, ok := (*g.VariableMap)[val1.Value]; ok {
+		return fmt.Errorf("error: variable %s is already defined", val1.Value)
+	}
+
+	(*g.VariableMap)[val1.Value] = Variable{Name: val1.Value, Value: val2, Const: false}
+
+	// push the variable value to the stack
+	g.Push(StackElement{Type: VARIABLE, Value: val2.Value, Position: val2.Position})
+
+	return nil
+}
+
 func (g *Gorth) ExecuteStack(p []StackElement) {
 	for _, e := range p {
 		switch e.Type {
@@ -751,6 +804,13 @@ func (g *Gorth) ExecuteStack(p []StackElement) {
 			if err != nil {
 				panic(err)
 			}
+
+		// ASSIGNMENT
+		case ASSIGN_OP:
+			err := g.AssignVar()
+			if err != nil {
+				panic(err)
+			}
 		default:
 			g.Push(e)
 		}
@@ -763,6 +823,7 @@ func (g *Gorth) ExecuteStack(p []StackElement) {
 	}
 	if g.DebugMode {
 		fmt.Println("Program Stack at the end of execution: \n\t", g.ExecutionStack)
+		fmt.Println("Variable Map at the end of execution: \n\t", *g.VariableMap)
 	}
 }
 
@@ -836,6 +897,8 @@ func (l *Lexer) Lex() (Position, Token, string) {
 				startPos := l.pos
 				token, lit := l.lexString()
 				return startPos, token, lit
+			case '=':
+				return l.pos, ASSIGN_OP, string(r)
 			}
 		default:
 			fmt.Printf("unknown rune: %v\n", string(r))
@@ -860,13 +923,14 @@ func (l *Lexer) lexIdentifier() (Token, string) {
 		r, _, err := l.reader.ReadRune()
 		if err != nil {
 			if err == io.EOF {
-				// check if lit does not exist in operatorMap
-				if _, ok := operatorMap[lit]; !ok {
-					panic(fmt.Errorf("unknown identifier: %s at line %d column %d", lit, l.pos.line, l.pos.column))
+				if IsOperator(lit) {
+					return operatorMap[lit], lit
+				} else {
+					return IDENTIFIER, lit
 				}
-
-				return operatorMap[lit], lit
 			}
+
+			panic(err)
 		}
 
 		l.pos.column++
@@ -876,8 +940,41 @@ func (l *Lexer) lexIdentifier() (Token, string) {
 			l.backup()
 
 			// check if lit does not exist in operatorMap
-			if _, ok := operatorMap[lit]; !ok {
-				panic(fmt.Errorf("unknown identifier: %s at line %d column %d", lit, l.pos.line, l.pos.column))
+			if !IsOperator(lit) {
+				// we need to read runes until we get to the next rune which is not a space and we can check if it's an = sign
+				var next_r rune
+				var counts int = 0
+
+				for {
+					// skip all whitespace runes until we get to the next rune
+					next_r, _, err = l.reader.ReadRune()
+
+					if err != nil {
+						if err == io.EOF {
+							break
+						}
+
+						panic(err)
+					}
+
+					if unicode.IsSpace(next_r) {
+						counts++
+						continue
+					}
+
+					break
+				}
+
+				// backup the reader
+				for i := 0; i < counts; i++ {
+					l.backup()
+				}
+
+				if next_r == '=' {
+					return VARIABLE, lit
+				} else {
+					return ILLEGAL, lit
+				}
 			}
 
 			return operatorMap[lit], lit
@@ -988,8 +1085,8 @@ func (p *Parser) Parse(pos Position, tok Token, lit string) (StackElement, error
 
 func (p *Parser) BuildAST(s []StackElement) (*Node, error) {
 	var stack []*Node
-	unaryOps := "print|drop|dup|inc|dec"
-	binaryOps := "+|-|*|/|mod|pow|swap|over"
+	unaryOps := "print|drop|dup|dump|inc|dec"
+	binaryOps := "+|-|*|/|mod|pow|swap|over|="
 	ternaryOps := "rot"
 
 	// assert that all ops are included
@@ -1029,6 +1126,7 @@ func (p *Parser) BuildAST(s []StackElement) (*Node, error) {
 				stack = stack[:len(stack)-1] // Remove the operand from the stack
 				node := &Node{Value: element.Value, Left: operand}
 				stack = append(stack, node)
+
 			case strings.Contains(binaryOps, element.Value):
 				if len(stack) < 2 {
 					return nil, fmt.Errorf("syntax error: %s requires at least 2 elements on the stack\nline: %v col: %v", element.Value, element.Position.line, element.Position.column)
@@ -1043,12 +1141,33 @@ func (p *Parser) BuildAST(s []StackElement) (*Node, error) {
 				return nil, fmt.Errorf("ternary operators are not supported yet")
 			}
 		} else {
+			fmt.Printf("Added Element: %v\n", element.Value)
 			stack = append(stack, &Node{Value: element.Value})
 		}
 	}
 
+	// Combine unary operations if any
+	for len(stack) > 1 {
+		// Pop the top two nodes from the stack
+		right := stack[len(stack)-1]
+		left := stack[len(stack)-2]
+		stack = stack[:len(stack)-2]
+
+		// Create a new node for the binary operation
+		node := &Node{Value: "compound", Left: left, Right: right}
+
+		// Push the binary operation node onto the stack
+		stack = append(stack, node)
+	}
+
 	if len(stack) != 1 {
-		return nil, fmt.Errorf("invalid expression")
+		for _, node := range stack {
+			// get the pointer to the node
+			if node != nil {
+				fmt.Printf("Node: %v\n", node.Value)
+			}
+		}
+		return nil, fmt.Errorf("invalid expression: %v", s)
 	}
 
 	return stack[0], nil
@@ -1099,18 +1218,17 @@ func main() {
 		PrintUsage()
 		return
 	}
-	lexer := NewLexer(file)
-	parser := NewParser()
-	gorth := NewGorth(*strictMode, *debugMode)
+
+	gorth := NewGorth(*strictMode, *debugMode, NewParser(), NewLexer(file))
 	var program []StackElement = make([]StackElement, 0)
 
 	for {
-		pos, tok, lit := lexer.Lex()
+		pos, tok, lit := gorth.Lexer.Lex()
 		if tok == EOF {
 			break
 		}
 
-		element, err := parser.Parse(pos, tok, lit)
+		element, err := gorth.Parser.Parse(pos, tok, lit)
 
 		if err != nil {
 			panic(fmt.Errorf("error parsing token: %v", err))
@@ -1122,15 +1240,14 @@ func main() {
 		// fmt.Printf("Token: %v, Literal: %s, Line: %d, Column: %d\n", tokenMap[tok], lit, pos.line, pos.column)
 	}
 
-	// build the AST
-	root, err := parser.BuildAST(program)
-	if err != nil {
-		panic(fmt.Errorf("error building AST: %v", err))
-	}
-
 	// print the AST
 	if gorth.DebugMode {
-		parser.PrintAST(root, "")
+		root, err := gorth.Parser.BuildAST(program)
+		// build the AST
+		if err != nil {
+			panic(fmt.Errorf("error building AST: %v", err))
+		}
+		gorth.Parser.PrintAST(root, "")
 	}
 
 	gorth.ExecuteStack(program)
