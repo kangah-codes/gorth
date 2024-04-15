@@ -2,11 +2,14 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"math"
 	"os"
+	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -16,7 +19,6 @@ import (
 
 const (
 	EOF = iota
-	IDENTIFIER
 	ILLEGAL
 
 	// TYPES
@@ -24,6 +26,12 @@ const (
 	STRING
 	BOOL
 	FLOAT
+	PTR
+
+	// POINTER MANIPULATION
+	DEREF_OP
+
+	// VARIABLE IDENTIFIER
 	VARIABLE
 
 	// MATH OPS
@@ -42,6 +50,7 @@ const (
 	DUP_OP
 	OVER_OP
 	ROT_OP
+	DELETE_OP
 
 	// OPERATORS
 	PRINT_OP
@@ -51,7 +60,14 @@ const (
 	ASSIGN_OP
 )
 
-var operatorMap = map[string]Token{
+const (
+	PRIMITIVE_TYPES = "int|string|bool|float|ptr"
+)
+
+// gotta do this cos this idiotic language doesn't support constant arrays
+var INCREMENTABLE_DEREMENTABLE_TYPES = []Token{INT, FLOAT, PTR}
+
+var identifierMap = map[string]Token{
 	// MATH OPS
 	"+":   ADD_OP,
 	"-":   SUB_OP,
@@ -74,20 +90,30 @@ var operatorMap = map[string]Token{
 	"over": OVER_OP,
 	"rot":  ROT_OP,
 
+	// VARIABLE MANIPULATION
+	"del": DELETE_OP,
+
 	// PRINT OPS
 	"print": PRINT_OP,
 	"dump":  DUMP_OP,
+
+	// TYPES
+	"str":   STRING,
+	"int":   INT,
+	"bool":  BOOL,
+	"float": FLOAT,
+	"ptr":   PTR,
 }
 
 var tokenMap = map[Token]string{
-	EOF:        "EOF",
-	IDENTIFIER: "IDENTIFIER",
-	ILLEGAL:    "ILLEGAL",
-	INT:        "INT",
-	STRING:     "STRING",
-	FLOAT:      "FLOAT",
-	BOOL:       "BOOL",
-	VARIABLE:   "VARIABLE",
+	EOF:      "EOF",
+	ILLEGAL:  "ILLEGAL",
+	INT:      "INT",
+	STRING:   "STRING",
+	FLOAT:    "FLOAT",
+	BOOL:     "BOOL",
+	VARIABLE: "VARIABLE",
+	PTR:      "PTR",
 
 	// MATH OPS
 	ADD_OP: "ADD_OP",
@@ -105,6 +131,9 @@ var tokenMap = map[Token]string{
 
 	// ASSIGNMENT
 	ASSIGN_OP: "ASSIGN_OP",
+
+	// VARIABLE MANIPULATION
+	DELETE_OP: "DELETE_OP",
 }
 
 type Token int
@@ -146,11 +175,31 @@ var Mod ArithmeticFunc = func(a, b float64) (float64, error) {
 	return math.Mod(b, a), nil
 }
 
-var Decrement ArithmeticFunc = func(a, b float64) (float64, error) {
-	return b - a, nil
+func PtrToInt(p string) int {
+	// remove * from the string
+	result, err := strconv.Atoi(strings.Trim(p, "*"))
+	if err != nil {
+		panic(err)
+	}
+
+	return result
 }
 
-func performIntArithmetic(val1, val2 StackElement, op ArithmeticFunc) (StackElement, error) {
+func PtreDerefToValue(p string) string {
+	return strings.Trim(p, "&")
+}
+
+func ContainsValue[T any](arr []T, target T) bool {
+	for _, value := range arr {
+		if reflect.DeepEqual(value, target) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func PerformIntArithmetic(val1, val2 StackElement, op ArithmeticFunc) (StackElement, error) {
 	result1, err1 := strconv.Atoi(val1.Value)
 	if err1 != nil {
 		return StackElement{}, err1
@@ -169,7 +218,7 @@ func performIntArithmetic(val1, val2 StackElement, op ArithmeticFunc) (StackElem
 	return StackElement{Type: INT, Value: strconv.Itoa(int(result)), Position: val2.Position}, nil
 }
 
-func performFloatArithmetic(val1, val2 StackElement, op ArithmeticFunc) (StackElement, error) {
+func PerformFloatArithmetic(val1, val2 StackElement, op ArithmeticFunc) (StackElement, error) {
 	result1, err1 := strconv.ParseFloat(val1.Value, 64)
 	if err1 != nil {
 		return StackElement{}, err1
@@ -188,12 +237,12 @@ func performFloatArithmetic(val1, val2 StackElement, op ArithmeticFunc) (StackEl
 	return StackElement{Type: FLOAT, Value: fmt.Sprintf("%f", result), Position: val2.Position}, nil
 }
 
-func performStringArithmetic(val1, val2 StackElement) (StackElement, error) {
+func PerformStringArithmetic(val1, val2 StackElement) (StackElement, error) {
 	result := val2.Value + val1.Value
 	return StackElement{Type: STRING, Value: result, Position: val2.Position}, nil
 }
 
-func performMixedArithmetic(val1, val2 StackElement, op ArithmeticFunc) (StackElement, error) {
+func PerformMixedArithmetic(val1, val2 StackElement, op ArithmeticFunc) (StackElement, error) {
 	result1, err1 := strconv.ParseFloat(val1.Value, 64)
 	if err1 != nil {
 		return StackElement{}, err1
@@ -212,23 +261,38 @@ func performMixedArithmetic(val1, val2 StackElement, op ArithmeticFunc) (StackEl
 	return StackElement{Type: FLOAT, Value: fmt.Sprintf("%f", result), Position: val2.Position}, nil
 }
 
-func performVariableArithmetic(g *Gorth, val1, val2 StackElement, op ArithmeticFunc) (StackElement, error) {
-	if _, ok := (*g.VariableMap)[val1.Value]; !ok {
+func PerformVariableArithmetic(g *Gorth, val1, val2 StackElement, op ArithmeticFunc) (StackElement, error) {
+	if _, ok := (g.SemanticAnalyser.SymbolTable.Variables)[val1.Value]; !ok {
 		return StackElement{}, fmt.Errorf("error: variable %s is not defined", val1.Value)
 	}
 
-	if _, ok := (*g.VariableMap)[val2.Value]; !ok {
+	if _, ok := (g.SemanticAnalyser.SymbolTable.Variables)[val2.Value]; !ok {
 		return StackElement{}, fmt.Errorf("error: variable %s is not defined", val2.Value)
 	}
 
-	val1Value := (*g.VariableMap)[val1.Value].Value
-	val2Value := (*g.VariableMap)[val2.Value].Value
+	val1Value := (g.SemanticAnalyser.SymbolTable.Variables)[val1.Value].Value
+	val2Value := (g.SemanticAnalyser.SymbolTable.Variables)[val2.Value].Value
 
 	var result float64
 	var err error
 
+	fmt.Println("Incrementing pointer ", tokenMap[val1.Type], " by ", tokenMap[val2.Type])
+
 	switch {
 	case val1Value.Type == INT && val2Value.Type == INT:
+		result1, err1 := strconv.Atoi(val1Value.Value)
+		if err1 != nil {
+			return StackElement{}, err1
+		}
+
+		result2, err2 := strconv.Atoi(val2Value.Value)
+		if err2 != nil {
+			return StackElement{}, err2
+		}
+
+		result, err = op(float64(result1), float64(result2))
+	// increasing the value of a ptr
+	case val2Value.Type == PTR && val1Value.Type == INT:
 		result1, err1 := strconv.Atoi(val1Value.Value)
 		if err1 != nil {
 			return StackElement{}, err1
@@ -267,7 +331,7 @@ func performVariableArithmetic(g *Gorth, val1, val2 StackElement, op ArithmeticF
 	case val1Value.Type == STRING && val2Value.Type == STRING:
 		result := val1Value.Value + val2Value.Value
 
-		(*g.VariableMap)[val2.Value] = Variable{Name: val2.Value, Value: StackElement{Type: STRING, Value: result, Position: val2.Position}, Const: false}
+		(g.SemanticAnalyser.SymbolTable.Variables)[val2.Value] = Variable{Name: val2.Value, Value: StackElement{Type: STRING, Value: result, Position: val2.Position}, Const: false}
 		return StackElement{Type: VARIABLE, Value: val2.Value, Position: val2.Position}, nil
 	default:
 		return StackElement{}, fmt.Errorf("error: cannot perform %s on %s and %s", fmt.Sprintf("%v", op), tokenMap[val1Value.Type], tokenMap[val2Value.Type])
@@ -284,22 +348,19 @@ func performVariableArithmetic(g *Gorth, val1, val2 StackElement, op ArithmeticF
 		resultType = FLOAT
 	}
 
-	(*g.VariableMap)[val2.Value] = Variable{Name: val2.Value, Value: StackElement{Type: resultType, Value: fmt.Sprintf("%v", result), Position: val2.Position}, Const: false}
+	(g.SemanticAnalyser.SymbolTable.Variables)[val2.Value] = Variable{Name: val2.Value, Value: StackElement{Type: resultType, Value: fmt.Sprintf("%v", result), Position: val2.Position}, Const: false, Type: resultType}
 	return StackElement{Type: VARIABLE, Value: val2.Value, Position: val2.Position}, nil
 }
 
-func performVariableAndValueArithmetic(g *Gorth, val1, val2 StackElement, op ArithmeticFunc) (StackElement, error) {
-	if _, ok := (*g.VariableMap)[val1.Value]; !ok {
+func PerformVariableAndValueArithmetic(g *Gorth, val1, val2 StackElement, op ArithmeticFunc) (StackElement, error) {
+	if _, ok := (g.SemanticAnalyser.SymbolTable.Variables)[val1.Value]; !ok {
 		return StackElement{}, fmt.Errorf("error: variable %s is not defined", val1.Value)
 	}
 
-	val1Value := (*g.VariableMap)[val1.Value].Value
+	val1Value := (g.SemanticAnalyser.SymbolTable.Variables)[val1.Value].Value
 
 	var result float64
 	var err error
-
-	fmt.Println("VAL 1: ", val1Value, " Type: ", tokenMap[val1Value.Type])
-	fmt.Println("VAL 2: ", val2, " Type: ", tokenMap[val2.Type])
 
 	switch {
 	case val1Value.Type == INT && val2.Type == INT:
@@ -314,6 +375,17 @@ func performVariableAndValueArithmetic(g *Gorth, val1, val2 StackElement, op Ari
 		}
 
 		result, err = op(float64(result2), float64(result1))
+	// incrementing a variable pointer by an int
+	// pointers are stored as ints and can only be incremented by ints
+	// case val1Value.Type == PTR && val2.Type == INT:
+	// 	result1 := PtrToInt(val1Value.Value)
+
+	// 	result2, err2 := strconv.Atoi(val2.Value)
+	// 	if err2 != nil {
+	// 		return StackElement{}, err2
+	// 	}
+
+	// 	result, err = op(float64(result1), float64(result2))
 	case val1Value.Type == FLOAT && val2.Type == FLOAT:
 		result1, err1 := strconv.ParseFloat(val1Value.Value, 64)
 		if err1 != nil {
@@ -342,7 +414,7 @@ func performVariableAndValueArithmetic(g *Gorth, val1, val2 StackElement, op Ari
 	case val1Value.Type == STRING && val2.Type == STRING:
 		result := val2.Value + val1Value.Value
 
-		(*g.VariableMap)[val1.Value] = Variable{Name: val1.Value, Value: StackElement{Type: STRING, Value: result, Position: val1Value.Position}, Const: false}
+		(g.SemanticAnalyser.SymbolTable.Variables)[val1.Value] = Variable{Name: val1.Value, Value: StackElement{Type: STRING, Value: result, Position: val1Value.Position}, Const: false, Type: STRING}
 		return StackElement{Type: VARIABLE, Value: val1.Value, Position: val1Value.Position}, nil
 	default:
 		return StackElement{}, fmt.Errorf("error: cannot perform %s on %s and %s", fmt.Sprintf("%v", op), tokenMap[val1Value.Type], tokenMap[val2.Type])
@@ -359,12 +431,12 @@ func performVariableAndValueArithmetic(g *Gorth, val1, val2 StackElement, op Ari
 		resultType = FLOAT
 	}
 
-	(*g.VariableMap)[val1.Value] = Variable{Name: val1.Value, Value: StackElement{Type: resultType, Value: fmt.Sprintf("%v", result), Position: val1Value.Position}, Const: false}
+	(g.SemanticAnalyser.SymbolTable.Variables)[val1.Value] = Variable{Name: val1.Value, Value: StackElement{Type: resultType, Value: fmt.Sprintf("%v", result), Position: val1Value.Position}, Const: false, Type: resultType}
 	return StackElement{Type: VARIABLE, Value: val1.Value, Position: val1Value.Position}, nil
 }
 
 func IsOperator(s string) bool {
-	_, ok := operatorMap[s]
+	_, ok := identifierMap[s]
 	return ok
 }
 
@@ -384,26 +456,36 @@ type Variable struct {
 	Name  string
 	Value StackElement
 	Const bool
+	Type  Token
 }
 
 type Gorth struct {
-	StrictMode     bool
-	DebugMode      bool
-	ExecutionStack []StackElement
-	Parser         *Parser
-	Lexer          *Lexer
-	VariableMap    *map[string]Variable
+	StrictMode       bool
+	DebugMode        bool
+	ExecutionStack   []StackElement
+	Parser           *Parser
+	Lexer            *Lexer
+	SemanticAnalyser *SemanticAnalyser
 }
 
-func NewGorth(s bool, d bool, p *Parser, l *Lexer) *Gorth {
+func NewGorth(s bool, d bool, p *Parser, l *Lexer, a *SemanticAnalyser) *Gorth {
 	return &Gorth{
-		StrictMode:     s,
-		DebugMode:      d,
-		ExecutionStack: make([]StackElement, 0),
-		Parser:         p,
-		Lexer:          l,
-		VariableMap:    &map[string]Variable{},
+		StrictMode:       s,
+		DebugMode:        d,
+		ExecutionStack:   make([]StackElement, 0),
+		Parser:           p,
+		Lexer:            l,
+		SemanticAnalyser: a,
 	}
+}
+
+func (g *Gorth) ExecStackRepr() {
+	// pretty print the stack
+	fmt.Println("Stack:")
+	for i := len(g.ExecutionStack) - 1; i >= 0; i-- {
+		fmt.Printf("\t\tType: %v, Value: %v, Line: %v, Col: %v\n", tokenMap[g.ExecutionStack[i].Type], g.ExecutionStack[i].Value, g.ExecutionStack[i].Position.line, g.ExecutionStack[i].Position.column)
+	}
+	fmt.Printf("\t\t%v\n", g.ExecutionStack)
 }
 
 func (g *Gorth) Pop() (StackElement, error) {
@@ -450,18 +532,27 @@ func (g *Gorth) Peek() (StackElement, error) {
 func (g *Gorth) Print() error {
 	// print the top of the stack
 	val, err := g.Peek()
+	if err != nil {
+		return err
+	}
 
 	if val.Type == VARIABLE {
 		// check if the variable is defined
-		if _, ok := (*g.VariableMap)[val.Value]; !ok {
+		if _, ok := (g.SemanticAnalyser.SymbolTable.Variables)[PtreDerefToValue(val.Value)]; !ok {
 			return fmt.Errorf("error: variable %s is not defined", val.Value)
 		}
 
-		val = (*g.VariableMap)[val.Value].Value
+		// if we're dealing with a ptr deref get the actual value
+		if strings.Contains(val.Value, "&") {
+			val = g.ExecutionStack[PtrToInt(g.SemanticAnalyser.SymbolTable.Variables[PtreDerefToValue(val.Value)].Value.Value)]
+		} else {
+			val = (g.SemanticAnalyser.SymbolTable.Variables)[PtreDerefToValue(val.Value)].Value
+		}
 	}
 
-	if err != nil {
-		return err
+	// we're dealing with a raw number deref
+	if val.Type == INT && strings.Contains(val.Value, "&") {
+		val = g.ExecutionStack[PtrToInt(PtreDerefToValue(val.Value))]
 	}
 
 	var sysret syscall.Errno
@@ -492,19 +583,21 @@ func (g *Gorth) Dump() error {
 func (g *Gorth) PerformArithmetic(val1, val2 StackElement, op ArithmeticFunc) (StackElement, error) {
 	switch {
 	case val1.Type == INT && val2.Type == INT:
-		return performIntArithmetic(val1, val2, op)
+		return PerformIntArithmetic(val1, val2, op)
 	case val1.Type == FLOAT && val2.Type == FLOAT:
-		return performFloatArithmetic(val1, val2, op)
+		return PerformFloatArithmetic(val1, val2, op)
 	case val1.Type == STRING && val2.Type == STRING:
-		return performStringArithmetic(val1, val2)
+		return PerformStringArithmetic(val1, val2)
 	case (val1.Type == INT && val2.Type == FLOAT) || (val1.Type == FLOAT && val2.Type == INT):
-		return performMixedArithmetic(val1, val2, op)
+		return PerformMixedArithmetic(val1, val2, op)
+	case val1.Type == PTR && val2.Type == INT || val2.Type == PTR && val1.Type == INT || val1.Type == PTR && val2.Type == PTR:
+		return PerformIntArithmetic(val1, val2, op)
 	case val1.Type == VARIABLE && val2.Type == VARIABLE:
-		return performVariableArithmetic(g, val1, val2, op)
+		return PerformVariableArithmetic(g, val1, val2, op)
 	case val1.Type == VARIABLE:
-		return performVariableAndValueArithmetic(g, val1, val2, op)
+		return PerformVariableAndValueArithmetic(g, val1, val2, op)
 	case val2.Type == VARIABLE:
-		return performVariableAndValueArithmetic(g, val2, val1, op)
+		return PerformVariableAndValueArithmetic(g, val2, val1, op)
 	default:
 		return StackElement{}, fmt.Errorf("error: cannot perform op on %s and %s", tokenMap[val1.Type], tokenMap[val2.Type])
 	}
@@ -606,6 +699,35 @@ func (g *Gorth) Increment() error {
 		return err
 	}
 
+	// if value is a variable, point to it's value instead
+	if val.Type == VARIABLE {
+		// check if it exists
+		if _, ok := g.SemanticAnalyser.SymbolTable.Variables[val.Value]; !ok {
+			return fmt.Errorf("error: variable %v is not defined", val.Value)
+		}
+
+		// check if the variable value is actually an incrementable type
+		if !ContainsValue(INCREMENTABLE_DEREMENTABLE_TYPES, g.SemanticAnalyser.SymbolTable.Variables[val.Value].Value.Type) {
+			return fmt.Errorf("error: variable %v is not an incrementable type. expected INT, FLOAT, PTR got %v instead", val.Value, tokenMap[g.SemanticAnalyser.SymbolTable.Variables[val.Value].Value.Type])
+		}
+
+		// we turn it back into a string to appease the go gods... since literals are stored as strings
+		// also i anticipated this would fail for regular variable int increments, but guess it still workds cause ptrtoint returns the string as a number
+		result, err := g.PerformArithmetic(StackElement{Type: g.SemanticAnalyser.SymbolTable.Variables[val.Value].Value.Type, Value: fmt.Sprintf("%v", PtrToInt(g.SemanticAnalyser.SymbolTable.Variables[val.Value].Value.Value)), Position: g.SemanticAnalyser.SymbolTable.Variables[val.Value].Value.Position}, StackElement{Type: INT, Value: "1", Position: val.Position}, Add)
+		if err != nil {
+			return err
+		}
+
+		g.SemanticAnalyser.SymbolTable.Variables[val.Value] = Variable{Value: result, Type: g.SemanticAnalyser.InferType(result.Value), Const: false, Name: val.Value}
+		g.Push(result)
+		return nil
+	}
+
+	// check if the variable value is actually an incrementable type
+	if !ContainsValue(INCREMENTABLE_DEREMENTABLE_TYPES, val.Type) {
+		return fmt.Errorf("error: %v is not an incrementable type. expected INT, FLOAT, PTR got %v instead", val.Value, tokenMap[val.Type])
+	}
+
 	result, err := g.PerformArithmetic(val, StackElement{Type: INT, Value: "1", Position: val.Position}, Add)
 	if err != nil {
 		return err
@@ -621,7 +743,36 @@ func (g *Gorth) Decrement() error {
 		return err
 	}
 
-	result, err := g.PerformArithmetic(StackElement{Type: INT, Value: "1", Position: val.Position}, val, Decrement)
+	// if value is a variable, point to it's value instead
+	if val.Type == VARIABLE {
+		// check if it exists
+		if _, ok := g.SemanticAnalyser.SymbolTable.Variables[val.Value]; !ok {
+			return fmt.Errorf("error: variable %v is not defined", val.Value)
+		}
+
+		// check if the variable value is actually an incrementable type
+		if !ContainsValue(INCREMENTABLE_DEREMENTABLE_TYPES, g.SemanticAnalyser.SymbolTable.Variables[val.Value].Value.Type) {
+			return fmt.Errorf("error: variable %v is not an decrementable type. expected INT, FLOAT, PTR got %v instead", val.Value, tokenMap[g.SemanticAnalyser.SymbolTable.Variables[val.Value].Value.Type])
+		}
+
+		// we turn it back into a string to appease the go gods... since literals are stored as strings
+		// also i anticipated this would fail for regular variable int increments, but guess it still workds cause ptrtoint returns the string as a number
+		result, err := g.PerformArithmetic(StackElement{Type: INT, Value: "1", Position: val.Position}, StackElement{Type: g.SemanticAnalyser.SymbolTable.Variables[val.Value].Value.Type, Value: fmt.Sprintf("%v", PtrToInt(g.SemanticAnalyser.SymbolTable.Variables[val.Value].Value.Value)), Position: g.SemanticAnalyser.SymbolTable.Variables[val.Value].Value.Position}, Add)
+		if err != nil {
+			return err
+		}
+
+		g.SemanticAnalyser.SymbolTable.Variables[val.Value] = Variable{Value: result, Type: g.SemanticAnalyser.InferType(result.Value), Const: false, Name: val.Value}
+		g.Push(result)
+		return nil
+	}
+
+	// check if the variable value is actually an incrementable type
+	if !ContainsValue(INCREMENTABLE_DEREMENTABLE_TYPES, val.Type) {
+		return fmt.Errorf("error: %v is not an decrementable type. expected INT, FLOAT, PTR got %v instead", val.Value, tokenMap[val.Type])
+	}
+
+	result, err := g.PerformArithmetic(StackElement{Type: INT, Value: "1", Position: val.Position}, val, Subtract)
 	if err != nil {
 		return err
 	}
@@ -635,17 +786,9 @@ func (g *Gorth) Drop() error {
 		return fmt.Errorf("error: cannot drop from an empty stack")
 	}
 
-	val, err := g.Pop()
+	_, err := g.Pop()
 	if err != nil {
 		return err
-	}
-
-	if val.Type == VARIABLE {
-		if _, ok := (*g.VariableMap)[val.Value]; !ok {
-			return fmt.Errorf("error: variable %s is not defined", val.Value)
-		}
-
-		delete(*g.VariableMap, val.Value)
 	}
 
 	return nil
@@ -736,32 +879,98 @@ func (g *Gorth) Rot() error {
 	return nil
 }
 
+func (g *Gorth) Delete() error {
+	if len(g.ExecutionStack) < 1 {
+		return errors.New("error: cannot delete with less than 1 element in the stack")
+	}
+
+	val, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	if val.Type == VARIABLE {
+		if _, ok := g.SemanticAnalyser.SymbolTable.Variables[val.Value]; !ok {
+			return fmt.Errorf("error: variable %s is not defined", val.Value)
+		}
+
+		delete(g.SemanticAnalyser.SymbolTable.Variables, val.Value)
+	} else {
+		return errors.New("error: cannot delete non-variable element, consider using drop instead?")
+	}
+
+	return nil
+}
+
 func (g *Gorth) AssignVar() error {
 	if len(g.ExecutionStack) < 2 {
 		return fmt.Errorf("error: cannot assign variable with less than 2 elements in the stack")
 	}
 
-	// variable name
+	// potential variable value or type
 	val1, err := g.Pop()
 	if err != nil {
 		return err
 	}
 
-	// variable value
+	// means we have a type declaration
+	if _, ok := identifierMap[val1.Value]; ok && strings.Contains(PRIMITIVE_TYPES, val1.Value) {
+		// val3 becomes the actual variable value
+		val3, err := g.Pop()
+		if err != nil {
+			return err
+		}
+
+		// val4 becomes the variable name
+		val4, err := g.Pop()
+		if err != nil {
+			return err
+		}
+
+		// check if the variable name is using a reserved keyword
+		if _, ok := identifierMap[val4.Value]; ok {
+			return fmt.Errorf("error: %v is a reserved keyword", val4.Value)
+		}
+
+		// check if the variable is already defined
+		if _, ok := (g.SemanticAnalyser.SymbolTable.Variables)[strings.ToLower(val3.Value)]; ok && (g.SemanticAnalyser.SymbolTable.Variables)[val3.Value].Const {
+			return fmt.Errorf("error: variable %s is already defined", val3.Value)
+		}
+
+		// always make strings lowercase in the variable map
+		// in this language, variables will be case insensitive
+		(g.SemanticAnalyser.SymbolTable.Variables)[strings.ToLower(val4.Value)] = Variable{Name: val4.Value, Value: val3, Const: false, Type: identifierMap[val1.Value]}
+
+		// TODO: DO NOT PUSH DECLARED VARIABLES ONTO THE STACK, THEY WILL BE CONSUMED SO YOU HAVE TO ADD THEM WHEN YOU WANT TO USE THEM
+		// push the variable value to the stack
+		// g.Push(StackElement{Type: VARIABLE, Value: val3.Value, Position: val3.Position})
+
+		return nil
+	}
+
+	// variable name
 	val2, err := g.Pop()
 	if err != nil {
 		return err
 	}
 
-	// check if the variable is already defined
-	if _, ok := (*g.VariableMap)[val1.Value]; ok && (*g.VariableMap)[val1.Value].Const {
-		return fmt.Errorf("error: variable %s is already defined", val1.Value)
+	// check if the variable name is using a reserved keyword
+	if _, ok := identifierMap[val2.Value]; ok {
+		return fmt.Errorf("error: %v is a reserved keyword", val2.Value)
 	}
 
-	(*g.VariableMap)[val1.Value] = Variable{Name: val1.Value, Value: val2, Const: false}
+	// check if the variable is already defined
+	if _, ok := (g.SemanticAnalyser.SymbolTable.Variables)[strings.ToLower(val2.Value)]; ok && (g.SemanticAnalyser.SymbolTable.Variables)[val2.Value].Const {
+		return fmt.Errorf("error: variable %s is already defined", val2.Value)
+	}
 
+	// always make strings lowercase in the variable map
+	// in this language, variables will be case insensitive
+	(*&g.SemanticAnalyser.SymbolTable.Variables)[strings.ToLower(val2.Value)] = Variable{Name: val2.Value, Value: val1, Const: false, Type: g.SemanticAnalyser.InferType(val1.Value)}
+
+	// TODO: DO NOT PUSH DECLARED VARIABLES ONTO THE STACK, THEY WILL BE CONSUMED SO YOU HAVE TO ADD THEM WHEN YOU WANT TO USE THEM
 	// push the variable value to the stack
-	g.Push(StackElement{Type: VARIABLE, Value: val1.Value, Position: val2.Position})
+	// g.Push(StackElement{Type: VARIABLE, Value: val1.Value, Position: val2.Position})
 
 	return nil
 }
@@ -849,6 +1058,11 @@ func (g *Gorth) ExecuteStack(p []StackElement) {
 			if err != nil {
 				panic(err)
 			}
+		case DELETE_OP:
+			err := g.Delete()
+			if err != nil {
+				panic(err)
+			}
 
 		// ASSIGNMENT
 		case ASSIGN_OP:
@@ -867,8 +1081,12 @@ func (g *Gorth) ExecuteStack(p []StackElement) {
 		}
 	}
 	if g.DebugMode {
-		fmt.Println("Program Stack at the end of execution: \n\t", g.ExecutionStack)
-		fmt.Println("Variable Map at the end of execution: \n\t", *g.VariableMap)
+		fmt.Println("Program Stack at the end of execution:")
+		fmt.Print("\t")
+		g.ExecStackRepr()
+		fmt.Println("Symbol Table at the end of execution:")
+		fmt.Print("\t")
+		g.SemanticAnalyser.VariablesRepr()
 	}
 }
 
@@ -888,7 +1106,7 @@ type Lexer struct {
 // Returns a new lexer with the given reader
 func NewLexer(reader io.Reader) *Lexer {
 	return &Lexer{
-		pos:    Position{line: 1, column: 0},
+		pos:    Position{line: 1, column: 1},
 		reader: bufio.NewReader(reader),
 	}
 }
@@ -909,18 +1127,19 @@ func (l *Lexer) Lex() (Position, Token, string) {
 
 		switch {
 		case r == '\n':
-			l.resetPosition()
+			l.ResetPosition()
 		case r == '\t':
+			// a tab is 4 spaces
 			l.pos.column += 4
 		case unicode.IsLetter(r):
 			startPos := l.pos
-			l.backup()
-			token, lit := l.lexIdentifier()
+			l.Backup()
+			token, lit := l.LexIdentifier()
 			return startPos, token, lit
 		case unicode.IsDigit(r):
 			startPos := l.pos
-			l.backup()
-			token, lit := l.lexNumber()
+			l.Backup()
+			token, lit := l.LexNumber()
 			return startPos, token, lit
 		case unicode.IsSpace(r):
 			continue
@@ -931,7 +1150,50 @@ func (l *Lexer) Lex() (Position, Token, string) {
 			case '-':
 				return l.pos, SUB_OP, string(r)
 			case '*':
+				nextR, err := l.PeekNextChar()
+				if err != nil {
+					panic(err)
+				}
+
+				if unicode.IsDigit(nextR) {
+					l.Backup()
+					token, digit := l.LexNumber()
+
+					if token == FLOAT {
+						panic("err: pointers cannot be floats")
+					}
+
+					return l.pos, PTR, fmt.Sprintf("*%s", digit)
+				}
+
 				return l.pos, MUL_OP, string(r)
+			case '&':
+				// we are dereferencing a pointer
+				nextR, err := l.PeekNextChar()
+				if err != nil {
+					panic(err)
+				}
+
+				if unicode.IsDigit(nextR) {
+					// means it's not a variable pointer
+					l.Backup()
+					token, digit := l.LexNumber()
+
+					if token != INT {
+						panic("err: cannot dereference by a float")
+					}
+
+					return l.pos, token, fmt.Sprintf("&%s", digit)
+				} else {
+					// means it's a variable pointer cos it's a string
+					// we need to get the variable name
+					// and check if it's a pointer and then dereference by its value
+					l.Backup()
+					token, lit := l.LexIdentifier()
+
+					return l.pos, token, fmt.Sprintf("&%s", lit)
+				}
+
 			case '/':
 				return l.pos, DIV_OP, string(r)
 			case '^':
@@ -940,7 +1202,7 @@ func (l *Lexer) Lex() (Position, Token, string) {
 				return l.pos, MOD_OP, string(r)
 			case '"':
 				startPos := l.pos
-				token, lit := l.lexString()
+				token, lit := l.LexString()
 				return startPos, token, lit
 			case '=':
 				return l.pos, ASSIGN_OP, string(r)
@@ -953,7 +1215,7 @@ func (l *Lexer) Lex() (Position, Token, string) {
 }
 
 // backup moves the reader back one rune
-func (l *Lexer) backup() {
+func (l *Lexer) Backup() {
 	if err := l.reader.UnreadRune(); err != nil {
 		panic(err)
 	}
@@ -961,7 +1223,21 @@ func (l *Lexer) backup() {
 	l.pos.column--
 }
 
-func (l *Lexer) lexIdentifier() (Token, string) {
+func (l *Lexer) PeekNextChar() (rune, error) {
+	r, _, err := l.reader.ReadRune()
+
+	if err != nil {
+		if err == io.EOF {
+			return 0, nil
+		}
+
+		return 0, err
+	}
+
+	return r, nil
+}
+
+func (l *Lexer) LexIdentifier() (Token, string) {
 	var lit string
 
 	for {
@@ -969,9 +1245,10 @@ func (l *Lexer) lexIdentifier() (Token, string) {
 		if err != nil {
 			if err == io.EOF {
 				if IsOperator(lit) {
-					return operatorMap[lit], lit
+					return identifierMap[lit], lit
 				} else {
-					return IDENTIFIER, lit
+					// TODO: Research which scenarios can cause this
+					return VARIABLE, lit
 				}
 			}
 
@@ -979,12 +1256,22 @@ func (l *Lexer) lexIdentifier() (Token, string) {
 		}
 
 		l.pos.column++
-		if unicode.IsLetter(r) {
+		if string(r) == "\n" {
+			// when we reach a newLine we return the current literal since we can't continue reading the identifier
+			if IsOperator(lit) {
+				return identifierMap[lit], lit
+			}
+
+			// anything other than an operator is assumed to be a variable
+			return VARIABLE, lit
+		} else if unicode.IsLetter(r) {
 			lit = lit + string(r)
 		} else {
-			l.backup()
+			l.Backup()
 
-			// check if lit does not exist in operatorMap
+			// fmt.Printf("Identifier: %v \n", lit)
+
+			// check if lit does not exist in identifierMap
 			if !IsOperator(lit) {
 				var nextR rune
 				var err error
@@ -1000,26 +1287,30 @@ func (l *Lexer) lexIdentifier() (Token, string) {
 						panic(err)
 					}
 
+					// fmt.Printf("Next Rune: %v \n Is Space: %v \n", string(nextR), unicode.IsSpace(nextR))
+
 					if !unicode.IsSpace(nextR) {
 						break
 					}
 					counts++
 				}
 
+				// fmt.Printf("This is how many spaces were skipped: %v", counts)
+
 				// Backup the reader
 				for i := 0; i < counts; i++ {
-					l.backup()
+					l.Backup()
 				}
 
 				return VARIABLE, lit
 			}
 
-			return operatorMap[lit], lit
+			return identifierMap[lit], lit
 		}
 	}
 }
 
-func (l *Lexer) lexNumber() (Token, string) {
+func (l *Lexer) LexNumber() (Token, string) {
 	var lit string
 	var tokenType Token = INT
 	position := l.pos
@@ -1035,6 +1326,10 @@ func (l *Lexer) lexNumber() (Token, string) {
 			panic(err)
 		}
 
+		if (unicode.IsSymbol(r) || unicode.IsPunct(r)) && r != '=' && len(lit) > 0 {
+			panic(fmt.Errorf("error: invalid token %v at line %v col %v", string(r), l.pos.line, l.pos.column))
+		}
+
 		if unicode.IsDigit(r) {
 			lit += string(r)
 		} else if IsDecimal(r) {
@@ -1045,7 +1340,7 @@ func (l *Lexer) lexNumber() (Token, string) {
 				panic(fmt.Errorf("unexpected decimal point at line %d column %d", position.line, position.column))
 			}
 		} else {
-			l.backup()
+			l.Backup()
 			break
 		}
 	}
@@ -1053,8 +1348,8 @@ func (l *Lexer) lexNumber() (Token, string) {
 	return tokenType, lit
 }
 
-// lexString scans the input for a string, and returns the string as a string
-func (l *Lexer) lexString() (Token, string) {
+// LexString scans the input for a string, and returns the string as a string
+func (l *Lexer) LexString() (Token, string) {
 	var lit string
 
 	for {
@@ -1078,7 +1373,7 @@ func (l *Lexer) lexString() (Token, string) {
 }
 
 // Resets the position of the lexer to the beginning of the line
-func (l *Lexer) resetPosition() {
+func (l *Lexer) ResetPosition() {
 	l.pos.line++
 	l.pos.column = 0
 }
@@ -1107,32 +1402,32 @@ func (p *Parser) Parse(pos Position, tok Token, lit string) (StackElement, error
 
 func (p *Parser) BuildAST(s []StackElement) (*Node, error) {
 	var stack []*Node
-	unaryOps := "print|drop|dup|dump|inc|dec"
+	unaryOps := "print|drop|dup|dump|inc|dec|del"
 	binaryOps := "+|-|*|/|mod|pow|swap|over|="
 	ternaryOps := "rot"
 
 	// assert that all ops are included
 	unOps := strings.Split(unaryOps, "|")
 	for _, op := range unOps {
-		_, ok := operatorMap[op]
+		_, ok := identifierMap[op]
 		if !ok {
-			return nil, fmt.Errorf("unknown operator: %s, did you perhaps forget to add it to the operatorMap?", op)
+			return nil, fmt.Errorf("unknown operator: %s, did you perhaps forget to add it to the identifierMap?", op)
 		}
 	}
 
 	binOps := strings.Split(binaryOps, "|")
 	for _, op := range binOps {
-		_, ok := operatorMap[op]
+		_, ok := identifierMap[op]
 		if !ok {
-			return nil, fmt.Errorf("unknown operator: %s, did you perhaps forget to add it to the operatorMap?", op)
+			return nil, fmt.Errorf("unknown operator: %s, did you perhaps forget to add it to the identifierMap?", op)
 		}
 	}
 
 	terOps := strings.Split(ternaryOps, "|")
 	for _, op := range terOps {
-		_, ok := operatorMap[op]
+		_, ok := identifierMap[op]
 		if !ok {
-			return nil, fmt.Errorf("unknown operator: %s, did you perhaps forget to add it to the operatorMap?", op)
+			return nil, fmt.Errorf("unknown operator: %s, did you perhaps forget to add it to the identifierMap?", op)
 		}
 	}
 
@@ -1204,6 +1499,55 @@ func (p *Parser) PrintAST(root *Node, indent string) {
 	p.PrintAST(root.Right, indent+"  ")
 }
 
+// START SEMANTIC ANALYSER
+type SymbolTable struct {
+	Variables map[string]Variable
+}
+type SemanticAnalyser struct {
+	AST         *Node
+	SymbolTable *SymbolTable
+}
+
+func NewSemanticAnalyser() *SemanticAnalyser {
+	return &SemanticAnalyser{
+		SymbolTable: &SymbolTable{
+			Variables: make(map[string]Variable),
+		},
+	}
+}
+
+func (s *SemanticAnalyser) VariablesRepr() {
+	// pretty print the variables
+	fmt.Println("Variables:\t")
+	for k, v := range s.SymbolTable.Variables {
+		fmt.Printf("\t\tVariable: %s, Value: %v, Const: %v, Type: %v, Line: %v, Col: %v\n", k, v.Value, v.Const, tokenMap[v.Type], v.Value.Position.line, v.Value.Position.column)
+	}
+}
+
+func (s *SemanticAnalyser) InferType(lit string) Token {
+	pointerRegex := regexp.MustCompile(`\*\d+`)
+
+	if _, err := strconv.Atoi(lit); err == nil {
+		return INT
+	}
+
+	if _, err := strconv.ParseFloat(lit, 64); err == nil {
+		return FLOAT
+	}
+
+	if lit == "true" || lit == "false" {
+		return BOOL
+	}
+
+	if pointerRegex.MatchString(lit) {
+		return PTR
+	}
+
+	return STRING
+}
+
+// END SEMANTIC ANALYSER
+
 /**
  * PARSER END
  */
@@ -1240,8 +1584,12 @@ func main() {
 		return
 	}
 
-	gorth := NewGorth(*strictMode, *debugMode, NewParser(), NewLexer(file))
-	var program []StackElement = make([]StackElement, 0)
+	parser := NewParser()
+	lexer := NewLexer(file)
+	semanticAnalyser := NewSemanticAnalyser()
+
+	gorth := NewGorth(*strictMode, *debugMode, parser, lexer, semanticAnalyser)
+	program := make([]StackElement, 0)
 
 	for {
 		pos, tok, lit := gorth.Lexer.Lex()
@@ -1268,9 +1616,12 @@ func main() {
 			panic(fmt.Errorf("error building AST: %v", err))
 		}
 
+		semanticAnalyser.AST = root
+
 		fmt.Println("Program AST: ")
 		gorth.Parser.PrintAST(root, "")
 	}
 
+	fmt.Println("Program output:")
 	gorth.ExecuteStack(program)
 }
