@@ -193,7 +193,20 @@ type Node struct {
 }
 
 type ArithmeticFunc func(float64, float64) (float64, error)
-type GenericFunc func(interface{}, interface{}) (interface{}, error)
+type LogicalFunc func(string, string) (bool, error)
+
+var And LogicalFunc = func(a, b string) (bool, error) {
+	return a == "true" && b == "true", nil
+}
+
+var Or LogicalFunc = func(a, b string) (bool, error) {
+	return a == "true" || b == "true", nil
+}
+
+// Not is unary so we can discard the second value
+var Not LogicalFunc = func(a, b string) (bool, error) {
+	return a != "true", nil
+}
 
 var Add ArithmeticFunc = func(a, b float64) (float64, error) {
 	return a + b, nil
@@ -241,6 +254,15 @@ func ContainsValue[T any](arr []T, target T) bool {
 	}
 
 	return false
+}
+
+func PerformLogical(val1, val2 StackElement, op LogicalFunc) (StackElement, error) {
+	result, err := op(val1.Value, val2.Value)
+	if err != nil {
+		return StackElement{}, err
+	}
+
+	return StackElement{Type: BOOL, Value: fmt.Sprintf("%v", result), Position: val2.Position}, nil
 }
 
 func PerformIntArithmetic(val1, val2 StackElement, op ArithmeticFunc) (StackElement, error) {
@@ -1319,8 +1341,72 @@ func (g *Gorth) And() error {
 		return fmt.Errorf("error: expected types (BOOL, BOOL), got (%s, %s  )instead", tokenMap[val1.Type], tokenMap[val2.Type])
 	}
 
-	result := val1.Value == "true" && val2.Value == "true"
-	g.Push(StackElement{Type: BOOL, Value: strconv.FormatBool(result)})
+	result, err := PerformLogical(val1, val2, And)
+	if err != nil {
+		return err
+	}
+	g.Push(result)
+
+	return nil
+}
+
+func (g *Gorth) Or() error {
+	val1, val2, err := g.PopValues()
+	if err != nil {
+		return err
+	}
+
+	switch {
+	case val1.Type == VARIABLE:
+		variable, ok := g.SemanticAnalyser.SymbolTable.Variables[val1.Value]
+		if !ok {
+			return fmt.Errorf("variable %s is not defined", val1.Value)
+		}
+
+		val1 = variable.Value
+	case val2.Type == VARIABLE:
+		variable, ok := g.SemanticAnalyser.SymbolTable.Variables[val2.Value]
+		if !ok {
+			return fmt.Errorf("variable %s is not defined", val2.Value)
+		}
+
+		val2 = variable.Value
+	case val1.Type != BOOL || val2.Type != BOOL:
+		return fmt.Errorf("error: expected types (BOOL, BOOL), got (%s, %s  )instead", tokenMap[val1.Type], tokenMap[val2.Type])
+	}
+
+	result, err := PerformLogical(val1, val2, Or)
+	if err != nil {
+		return err
+	}
+	g.Push(result)
+
+	return nil
+}
+
+func (g *Gorth) Not() error {
+	val, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	switch {
+	case val.Type == VARIABLE:
+		variable, ok := g.SemanticAnalyser.SymbolTable.Variables[val.Value]
+		if !ok {
+			return fmt.Errorf("variable %s is not defined", val.Value)
+		}
+
+		val = variable.Value
+	case val.Type != BOOL:
+		return fmt.Errorf("error: expected type BOOL, got %s instead", tokenMap[val.Type])
+	}
+
+	result, err := PerformLogical(val, val, Not)
+	if err != nil {
+		return err
+	}
+	g.Push(result)
 
 	return nil
 }
@@ -1457,6 +1543,16 @@ func (g *Gorth) ExecuteStack(p []StackElement) {
 			if err != nil {
 				panic(err)
 			}
+		case OR_OP:
+			err := g.Or()
+			if err != nil {
+				panic(err)
+			}
+		case NOT_OP:
+			err := g.Not()
+			if err != nil {
+				panic(err)
+			}
 
 		// ASSIGNMENT
 		case ASSIGN_OP:
@@ -1586,6 +1682,7 @@ func (l *Lexer) Lex() (Position, Token, string) {
 					l.reader.ReadRune()
 					return l.pos, LTE_OP, "<="
 				}
+
 				return l.pos, LT_OP, string(r)
 			case '*':
 				nextR, err := l.PeekNextChar()
@@ -1634,7 +1731,17 @@ func (l *Lexer) Lex() (Position, Token, string) {
 
 					return l.pos, DEREF_OP, fmt.Sprintf("&%s", lit)
 				}
+			case '|':
+				nextR, err := l.PeekNextChar()
+				if err != nil {
+					panic(err)
+				}
 
+				if nextR == '|' {
+					return l.pos, OR_OP, "||"
+				}
+
+				return l.pos, ILLEGAL, string(r)
 			case '/':
 				return l.pos, DIV_OP, string(r)
 			case '^':
@@ -1659,7 +1766,12 @@ func (l *Lexer) Lex() (Position, Token, string) {
 					l.reader.ReadRune()
 					startPos := l.pos
 					return startPos, NEQ_OP, "!="
+				} else if unicode.IsSpace(nextR) {
+					startPos := l.pos
+					return startPos, NOT_OP, "!"
 				}
+
+				return l.pos, ILLEGAL, string(r)
 			case '=':
 				nextR, err := l.PeekNextChar()
 				if err != nil {
@@ -1906,8 +2018,8 @@ func (p *Parser) Parse(pos Position, tok Token, lit string) (StackElement, error
 
 func (p *Parser) BuildAST(s []StackElement) (*Node, error) {
 	var stack []*Node
-	unaryOps := "print,drop,dup,dump,inc,dec,del"
-	binaryOps := "+,-,*,/,%,^,swap,over,=,==,!=,>,<,>=,<=,&&,!"
+	unaryOps := "print,drop,dup,dump,inc,dec,del,!"
+	binaryOps := "+,-,*,/,%,^,swap,over,=,==,!=,>,<,>=,<=,&&"
 	ternaryOps := "rot"
 
 	// assert that all ops are included
