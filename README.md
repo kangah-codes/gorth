@@ -26,23 +26,24 @@ Gorth is a Go implementation of a simple stack-based language. It is a work in p
 
 ## Exhaustive List of operations
 
-| Operation | Description                                                      |
-| --------- | ---------------------------------------------------------------- |
-| `swap`    | Swaps the top two values on the stack                            |
-| `dup`     | Duplicates the top value on the stack                            |
-| `rot`     | Rotates the top three values on the stack                        |
-| `print`   | Prints the top value on the stack                                |
-| `dump`    | Drops and prints the top value on the stack                      |
-| `drop`    | Drops the top value on the stack                                 |
-| `over`    | Duplicates the second value on the stack to the top of the stack |
-| `inc`     | Increments the top value on the stack by 1                       |
-| `dec`     | Decrements the top value on the stack by 1                       |
-| `+`       | Adds the top 2 values on the stack                               |
-| `-`       | Subtracts the top 2 values on the stack                          |
-| `*`       | Multiplies the top 2 values on the stack                         |
-| `/`       | Divides the top 2 values on the stack                            |
-| `^`       | Raises the top value to the power of the second value            |
-| `%`       | Performs mod operation on top 2 values on the stack              |
+| Operation | Description                                                                                              |
+| --------- | -------------------------------------------------------------------------------------------------------- |
+| `swap`    | Swaps the top two values on the stack                                                                    |
+| `dup`     | Duplicates the top value on the stack                                                                    |
+| `rot`     | Rotates the top three values on the stack                                                                |
+| `print`   | Prints the top value on the stack                                                                        |
+| `dump`    | Drops and prints the top value on the stack                                                              |
+| `drop`    | Drops the top value on the stack                                                                         |
+| `delete`  | Deletes a varable from mem (not to be confused with drop, which will only drop the value from the stack) |
+| `over`    | Duplicates the second value on the stack to the top of the stack                                         |
+| `inc`     | Increments the top value on the stack by 1                                                               |
+| `dec`     | Decrements the top value on the stack by 1                                                               |
+| `+`       | Adds the top 2 values on the stack                                                                       |
+| `-`       | Subtracts the top 2 values on the stack                                                                  |
+| `*`       | Multiplies the top 2 values on the stack                                                                 |
+| `/`       | Divides the top 2 values on the stack                                                                    |
+| `^`       | Raises the top value to the power of the second value                                                    |
+| `%`       | Performs mod operation on top 2 values on the stack                                                      |
 
 ## Usage
 

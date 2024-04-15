@@ -44,6 +44,19 @@ const (
 	INC_OP
 	DEC_OP
 
+	// COMPARISON OPS
+	EQ_OP
+	NEQ_OP
+	GT_OP
+	LT_OP
+	GTE_OP
+	LTE_OP
+
+	// LOGICAL OPS
+	AND_OP
+	OR_OP
+	NOT_OP
+
 	// STACK MANIPULATION
 	DROP_OP
 	SWAP_OP
@@ -82,6 +95,14 @@ var identifierMap = map[string]Token{
 	// ASSIGNMENT
 	"=": ASSIGN_OP,
 
+	// COMPARISON OPS
+	"==": EQ_OP,
+	"!=": NEQ_OP,
+	">":  GT_OP,
+	"<":  LT_OP,
+	">=": GTE_OP,
+	"<=": LTE_OP,
+
 	// STACK MANIPULATION
 	"drop": DROP_OP,
 	"swap": SWAP_OP,
@@ -117,6 +138,14 @@ var tokenMap = map[Token]string{
 
 	// PTR OPS
 	DEREF_OP: "DEREF_OP",
+
+	// COMPARISON OPS
+	EQ_OP:  "EQ_OP",
+	NEQ_OP: "NEQ_OP",
+	GT_OP:  "GT_OP",
+	LT_OP:  "LT_OP",
+	GTE_OP: "GTE_OP",
+	LTE_OP: "LTE_OP",
 
 	// MATH OPS
 	ADD_OP: "ADD_OP",
@@ -154,6 +183,7 @@ type Node struct {
 }
 
 type ArithmeticFunc func(float64, float64) (float64, error)
+type GenericFunc func(interface{}, interface{}) (interface{}, error)
 
 var Add ArithmeticFunc = func(a, b float64) (float64, error) {
 	return a + b, nil
@@ -379,17 +409,6 @@ func PerformVariableAndValueArithmetic(g *Gorth, val1, val2 StackElement, op Ari
 		}
 
 		result, err = op(float64(result2), float64(result1))
-	// incrementing a variable pointer by an int
-	// pointers are stored as ints and can only be incremented by ints
-	// case val1Value.Type == PTR && val2.Type == INT:
-	// 	result1 := PtrToInt(val1Value.Value)
-
-	// 	result2, err2 := strconv.Atoi(val2.Value)
-	// 	if err2 != nil {
-	// 		return StackElement{}, err2
-	// 	}
-
-	// 	result, err = op(float64(result1), float64(result2))
 	case val1Value.Type == FLOAT && val2.Type == FLOAT:
 		result1, err1 := strconv.ParseFloat(val1Value.Value, 64)
 		if err1 != nil {
@@ -1050,6 +1069,221 @@ func (g *Gorth) AssignVar() error {
 	return nil
 }
 
+// return a bool so it can be easier to build on top of this for NEQ
+func (g *Gorth) EqualTo() (bool, error) {
+	// pop two values from the stack
+	// check if they're equal
+	// if they are, push true on the stack, false otherwise
+
+	val1, val2, err := g.PopValues()
+	if err != nil {
+		return false, err
+	}
+
+	// If the values are variables, get their actual values
+	if val1.Type == VARIABLE {
+		variable, ok := g.SemanticAnalyser.SymbolTable.Variables[val1.Value]
+		if !ok {
+			return false, fmt.Errorf("variable %s is not defined", val1.Value)
+		}
+		val1 = variable.Value
+	}
+
+	if val2.Type == VARIABLE {
+		variable, ok := g.SemanticAnalyser.SymbolTable.Variables[val2.Value]
+		if !ok {
+			return false, fmt.Errorf("variable %s is not defined", val2.Value)
+		}
+		val2 = variable.Value
+	}
+
+	// Check if the types are the same
+	if val1.Type != val2.Type {
+		return false, fmt.Errorf("error: cannot compare values of different types: %s and %s", tokenMap[val1.Type], tokenMap[val2.Type])
+	}
+
+	// Compare the values and push the result onto the stack
+	result := val1.Value == val2.Value
+	g.Push(StackElement{Type: BOOL, Value: strconv.FormatBool(result)})
+
+	return result, nil
+}
+
+func (g *Gorth) NotEqualTo() error {
+	result, err := g.EqualTo()
+	if err != nil {
+		return err
+	}
+
+	g.ExecutionStack[len(g.ExecutionStack)-1].Value = strconv.FormatBool(!result)
+
+	return nil
+}
+
+func (g *Gorth) GreaterThan() error {
+	val1, val2, err := g.PopValues()
+	if err != nil {
+		return err
+	}
+
+	switch {
+	case val1.Type == VARIABLE:
+		variable, ok := g.SemanticAnalyser.SymbolTable.Variables[val1.Value]
+		if !ok {
+			return fmt.Errorf("variable %s is not defined", val1.Value)
+		}
+
+		val1 = variable.Value
+	case val2.Type == VARIABLE:
+		variable, ok := g.SemanticAnalyser.SymbolTable.Variables[val2.Value]
+		if !ok {
+			return fmt.Errorf("variable %s is not defined", val2.Value)
+		}
+
+		val2 = variable.Value
+	case (val1.Type == STRING || val1.Type == BOOL) || (val2.Type == STRING || val2.Type == BOOL):
+		return fmt.Errorf("error: cannot compare values of type %s and %s", tokenMap[val1.Type], tokenMap[val2.Type])
+	}
+
+	result1, err := strconv.ParseFloat(val1.Value, 64)
+	if err != nil {
+		return err
+	}
+
+	result2, err := strconv.ParseFloat(val2.Value, 64)
+	if err != nil {
+		return err
+	}
+
+	result := result2 > result1
+	g.Push(StackElement{Type: BOOL, Value: strconv.FormatBool(result)})
+
+	return nil
+}
+
+func (g *Gorth) LessThan() error {
+	val1, val2, err := g.PopValues()
+	if err != nil {
+		return err
+	}
+
+	switch {
+	case val1.Type == VARIABLE:
+		variable, ok := g.SemanticAnalyser.SymbolTable.Variables[val1.Value]
+		if !ok {
+			return fmt.Errorf("variable %s is not defined", val1.Value)
+		}
+
+		val1 = variable.Value
+	case val2.Type == VARIABLE:
+		variable, ok := g.SemanticAnalyser.SymbolTable.Variables[val2.Value]
+		if !ok {
+			return fmt.Errorf("variable %s is not defined", val2.Value)
+		}
+
+		val2 = variable.Value
+	case (val1.Type == STRING || val1.Type == BOOL) || (val2.Type == STRING || val2.Type == BOOL):
+		return fmt.Errorf("error: cannot compare values of type %s and %s", tokenMap[val1.Type], tokenMap[val2.Type])
+	}
+
+	result1, err := strconv.ParseFloat(val1.Value, 64)
+	if err != nil {
+		return err
+	}
+
+	result2, err := strconv.ParseFloat(val2.Value, 64)
+	if err != nil {
+		return err
+	}
+
+	result := result2 < result1
+	g.Push(StackElement{Type: BOOL, Value: strconv.FormatBool(result)})
+
+	return nil
+}
+
+func (g *Gorth) GreaterThanEqual() error {
+	val1, val2, err := g.PopValues()
+	if err != nil {
+		return err
+	}
+
+	switch {
+	case val1.Type == VARIABLE:
+		variable, ok := g.SemanticAnalyser.SymbolTable.Variables[val1.Value]
+		if !ok {
+			return fmt.Errorf("variable %s is not defined", val1.Value)
+		}
+
+		val1 = variable.Value
+	case val2.Type == VARIABLE:
+		variable, ok := g.SemanticAnalyser.SymbolTable.Variables[val2.Value]
+		if !ok {
+			return fmt.Errorf("variable %s is not defined", val2.Value)
+		}
+
+		val2 = variable.Value
+	case (val1.Type == STRING || val1.Type == BOOL) || (val2.Type == STRING || val2.Type == BOOL):
+		return fmt.Errorf("error: cannot compare values of type %s and %s", tokenMap[val1.Type], tokenMap[val2.Type])
+	}
+
+	result1, err := strconv.ParseFloat(val1.Value, 64)
+	if err != nil {
+		return err
+	}
+
+	result2, err := strconv.ParseFloat(val2.Value, 64)
+	if err != nil {
+		return err
+	}
+
+	result := result2 >= result1
+	g.Push(StackElement{Type: BOOL, Value: strconv.FormatBool(result)})
+
+	return nil
+}
+
+func (g *Gorth) LessThanEqual() error {
+	val1, val2, err := g.PopValues()
+	if err != nil {
+		return err
+	}
+
+	switch {
+	case val1.Type == VARIABLE:
+		variable, ok := g.SemanticAnalyser.SymbolTable.Variables[val1.Value]
+		if !ok {
+			return fmt.Errorf("variable %s is not defined", val1.Value)
+		}
+
+		val1 = variable.Value
+	case val2.Type == VARIABLE:
+		variable, ok := g.SemanticAnalyser.SymbolTable.Variables[val2.Value]
+		if !ok {
+			return fmt.Errorf("variable %s is not defined", val2.Value)
+		}
+
+		val2 = variable.Value
+	case (val1.Type == STRING || val1.Type == BOOL) || (val2.Type == STRING || val2.Type == BOOL):
+		return fmt.Errorf("error: cannot compare values of type %s and %s", tokenMap[val1.Type], tokenMap[val2.Type])
+	}
+
+	result1, err := strconv.ParseFloat(val1.Value, 64)
+	if err != nil {
+		return err
+	}
+
+	result2, err := strconv.ParseFloat(val2.Value, 64)
+	if err != nil {
+		return err
+	}
+
+	result := result2 <= result1
+	g.Push(StackElement{Type: BOOL, Value: strconv.FormatBool(result)})
+
+	return nil
+}
+
 func (g *Gorth) ExecuteStack(p []StackElement) {
 	for _, e := range p {
 		switch e.Type {
@@ -1140,6 +1374,38 @@ func (g *Gorth) ExecuteStack(p []StackElement) {
 			}
 		case DELETE_OP:
 			err := g.Delete()
+			if err != nil {
+				panic(err)
+			}
+
+		// COMPARISONS
+		case EQ_OP:
+			_, err := g.EqualTo()
+			if err != nil {
+				panic(err)
+			}
+		case NEQ_OP:
+			err := g.NotEqualTo()
+			if err != nil {
+				panic(err)
+			}
+		case GT_OP:
+			err := g.GreaterThan()
+			if err != nil {
+				panic(err)
+			}
+		case LT_OP:
+			err := g.LessThan()
+			if err != nil {
+				panic(err)
+			}
+		case GTE_OP:
+			err := g.GreaterThanEqual()
+			if err != nil {
+				panic(err)
+			}
+		case LTE_OP:
+			err := g.LessThanEqual()
 			if err != nil {
 				panic(err)
 			}
@@ -1248,6 +1514,31 @@ func (l *Lexer) Lex() (Position, Token, string) {
 				return l.pos, ADD_OP, string(r)
 			case '-':
 				return l.pos, SUB_OP, string(r)
+			case '>':
+				nextR, err := l.PeekNextChar()
+				if err != nil {
+					panic(err)
+				}
+
+				if nextR == '=' {
+					// consume the rune
+					l.reader.ReadRune()
+					return l.pos, GTE_OP, ">="
+				}
+
+				return l.pos, GT_OP, string(r)
+			case '<':
+				nextR, err := l.PeekNextChar()
+				if err != nil {
+					panic(err)
+				}
+
+				if nextR == '=' {
+					// consume the rune
+					l.reader.ReadRune()
+					return l.pos, LTE_OP, "<="
+				}
+				return l.pos, LT_OP, string(r)
 			case '*':
 				nextR, err := l.PeekNextChar()
 				if err != nil {
@@ -1307,8 +1598,30 @@ func (l *Lexer) Lex() (Position, Token, string) {
 				startPos := l.pos
 				token, lit := l.LexMultiLineString()
 				return startPos, token, lit
+			case '!':
+				nextR, err := l.PeekNextChar()
+				if err != nil {
+					panic(err)
+				}
+
+				if nextR == '=' {
+					l.reader.ReadRune()
+					startPos := l.pos
+					return startPos, NEQ_OP, "!="
+				}
 			case '=':
-				return l.pos, ASSIGN_OP, string(r)
+				nextR, err := l.PeekNextChar()
+				if err != nil {
+					panic(err)
+				}
+
+				if nextR == '=' {
+					l.reader.ReadRune()
+					// we're using a double = so we most likely are doing a comparison
+					return l.pos, EQ_OP, "=="
+				} else {
+					return l.pos, ASSIGN_OP, string(r)
+				}
 			}
 		default:
 			return l.pos, ILLEGAL, string(r)
@@ -1532,7 +1845,7 @@ func (p *Parser) Parse(pos Position, tok Token, lit string) (StackElement, error
 func (p *Parser) BuildAST(s []StackElement) (*Node, error) {
 	var stack []*Node
 	unaryOps := "print|drop|dup|dump|inc|dec|del"
-	binaryOps := "+|-|*|/|mod|pow|swap|over|="
+	binaryOps := "+|-|*|/|%|^|swap|over|=|==|!=|>|<|>=|<="
 	ternaryOps := "rot"
 
 	// assert that all ops are included
