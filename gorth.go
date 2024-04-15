@@ -54,6 +54,7 @@ const (
 
 	// OPERATORS
 	PRINT_OP
+	PRINTLN_OP
 	DUMP_OP
 
 	// ASSIGNMENT
@@ -94,8 +95,9 @@ var identifierMap = map[string]Token{
 	"del": DELETE_OP,
 
 	// PRINT OPS
-	"print": PRINT_OP,
-	"dump":  DUMP_OP,
+	"print":   PRINT_OP,
+	"println": PRINTLN_OP,
+	"dump":    DUMP_OP,
 
 	// TYPES
 	"str":   STRING,
@@ -115,12 +117,16 @@ var tokenMap = map[Token]string{
 	VARIABLE: "VARIABLE",
 	PTR:      "PTR",
 
+	// PTR OPS
+	DEREF_OP: "DEREF_OP",
+
 	// MATH OPS
 	ADD_OP: "ADD_OP",
 
 	// PRINT OPS
-	PRINT_OP: "PRINT_OP",
-	DUMP_OP:  "DUMP_OP",
+	PRINT_OP:   "PRINT_OP",
+	PRINTLN_OP: "PRINTLN_OP",
+	DUMP_OP:    "DUMP_OP",
 
 	// STACK MANIPULATION
 	DROP_OP: "DROP_OP",
@@ -499,6 +505,40 @@ func (g *Gorth) Pop() (StackElement, error) {
 	return element, nil
 }
 
+func (g *Gorth) Dereference() error {
+	// adds the value of the dereferenced ptr to the stack
+	val, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	var derefVal StackElement
+	derefPtr := PtreDerefToValue(val.Value)
+	derefType := g.SemanticAnalyser.InferType(derefPtr)
+
+	// we're dereferencing by using a raw int value
+	if derefType == INT {
+		if PtrToInt(derefPtr) > len(g.ExecutionStack)-1 {
+			return fmt.Errorf("error: execution stack index %v out of range with length %v", derefPtr, len(g.ExecutionStack))
+		}
+
+		ref := g.ExecutionStack[PtrToInt(derefPtr)]
+		derefVal = ref
+	} else {
+		// we're dereferencing using a variable containing a ptr
+		// first check if it exists
+		if _, ok := g.SemanticAnalyser.SymbolTable.Variables[derefPtr]; !ok {
+			return fmt.Errorf("error: variable %v is not defined", derefPtr)
+		}
+
+		derefVal = g.ExecutionStack[PtrToInt(g.SemanticAnalyser.SymbolTable.Variables[derefPtr].Value.Value)]
+	}
+
+	g.Push(derefVal)
+	return nil
+
+}
+
 func (g *Gorth) PopValues() (StackElement, StackElement, error) {
 	if len(g.ExecutionStack) < 2 {
 		return StackElement{}, StackElement{}, fmt.Errorf("error: cannot pop values from an empty stack")
@@ -530,6 +570,43 @@ func (g *Gorth) Peek() (StackElement, error) {
 }
 
 func (g *Gorth) Print() error {
+	// print the top of the stack
+	val, err := g.Peek()
+	if err != nil {
+		return err
+	}
+
+	if val.Type == VARIABLE {
+		// check if the variable is defined
+		if _, ok := (g.SemanticAnalyser.SymbolTable.Variables)[PtreDerefToValue(val.Value)]; !ok {
+			return fmt.Errorf("error: variable %s is not defined", val.Value)
+		}
+
+		// if we're dealing with a ptr deref get the actual value
+		if strings.Contains(val.Value, "&") {
+			val = g.ExecutionStack[PtrToInt(g.SemanticAnalyser.SymbolTable.Variables[PtreDerefToValue(val.Value)].Value.Value)]
+		} else {
+			val = (g.SemanticAnalyser.SymbolTable.Variables)[PtreDerefToValue(val.Value)].Value
+		}
+	}
+
+	// we're dealing with a raw number deref
+	if val.Type == INT && strings.Contains(val.Value, "&") {
+		val = g.ExecutionStack[PtrToInt(PtreDerefToValue(val.Value))]
+	}
+
+	var sysret syscall.Errno
+
+	bytes := []byte(val.Value)
+	_, _, sysret = syscall.Syscall(syscall.SYS_WRITE, 1, uintptr(unsafe.Pointer(&bytes[0])), uintptr(len(bytes)))
+	if sysret != 0 {
+		return fmt.Errorf("error: %v", syscall.Errno(-sysret))
+	}
+
+	return nil
+}
+
+func (g *Gorth) Println() error {
 	// print the top of the stack
 	val, err := g.Peek()
 	if err != nil {
@@ -984,6 +1061,11 @@ func (g *Gorth) ExecuteStack(p []StackElement) {
 			if err != nil {
 				panic(err)
 			}
+		case PRINTLN_OP:
+			err := g.Println()
+			if err != nil {
+				panic(err)
+			}
 		case DUMP_OP:
 			err := g.Dump()
 			if err != nil {
@@ -1070,6 +1152,14 @@ func (g *Gorth) ExecuteStack(p []StackElement) {
 			if err != nil {
 				panic(err)
 			}
+
+		// DEREF_OP
+		case DEREF_OP:
+			g.Push(e)
+			err := g.Dereference()
+			if err != nil {
+				panic(err)
+			}
 		default:
 			g.Push(e)
 		}
@@ -1127,7 +1217,7 @@ func (l *Lexer) Lex() (Position, Token, string) {
 
 		switch {
 		case r == '\n':
-			l.ResetPosition()
+			l.JumpToNextLine()
 		case r == '\t':
 			// a tab is 4 spaces
 			l.pos.column += 4
@@ -1145,6 +1235,17 @@ func (l *Lexer) Lex() (Position, Token, string) {
 			continue
 		case unicode.IsSymbol(r), unicode.IsPunct(r):
 			switch r {
+			case '#':
+				// means the entire line is a comment
+				// consume the rest of the line
+				for {
+					r, _, err = l.reader.ReadRune()
+					if err != nil || r == '\n' {
+						break
+					}
+				}
+
+				l.JumpToNextLine()
 			case '+':
 				return l.pos, ADD_OP, string(r)
 			case '-':
@@ -1183,15 +1284,15 @@ func (l *Lexer) Lex() (Position, Token, string) {
 						panic("err: cannot dereference by a float")
 					}
 
-					return l.pos, token, fmt.Sprintf("&%s", digit)
+					return l.pos, DEREF_OP, fmt.Sprintf("&%s", digit)
 				} else {
 					// means it's a variable pointer cos it's a string
 					// we need to get the variable name
 					// and check if it's a pointer and then dereference by its value
 					l.Backup()
-					token, lit := l.LexIdentifier()
+					_, lit := l.LexIdentifier()
 
-					return l.pos, token, fmt.Sprintf("&%s", lit)
+					return l.pos, DEREF_OP, fmt.Sprintf("&%s", lit)
 				}
 
 			case '/':
@@ -1204,11 +1305,14 @@ func (l *Lexer) Lex() (Position, Token, string) {
 				startPos := l.pos
 				token, lit := l.LexString()
 				return startPos, token, lit
+			case '`':
+				startPos := l.pos
+				token, lit := l.LexMultiLineString()
+				return startPos, token, lit
 			case '=':
 				return l.pos, ASSIGN_OP, string(r)
 			}
 		default:
-			fmt.Printf("unknown rune: %v\n", string(r))
 			return l.pos, ILLEGAL, string(r)
 		}
 	}
@@ -1348,6 +1452,29 @@ func (l *Lexer) LexNumber() (Token, string) {
 	return tokenType, lit
 }
 
+func (l *Lexer) LexMultiLineString() (Token, string) {
+	var lit string
+
+	for {
+		r, _, err := l.reader.ReadRune()
+		if err != nil {
+			if err == io.EOF {
+				return STRING, lit
+			}
+
+			panic(err)
+		}
+
+		if r == '`' {
+			break
+		}
+
+		lit += string(r)
+	}
+
+	return STRING, lit
+}
+
 // LexString scans the input for a string, and returns the string as a string
 func (l *Lexer) LexString() (Token, string) {
 	var lit string
@@ -1366,14 +1493,18 @@ func (l *Lexer) LexString() (Token, string) {
 			break
 		}
 
+		if r == '\n' {
+			panic(fmt.Errorf("unexpected newline in string at line %d column %d", l.pos.line, l.pos.column))
+		}
+
 		lit += string(r)
 	}
 
 	return STRING, lit
 }
 
-// Resets the position of the lexer to the beginning of the line
-func (l *Lexer) ResetPosition() {
+// Resets the position of the lexer to the first col of the next line
+func (l *Lexer) JumpToNextLine() {
 	l.pos.line++
 	l.pos.column = 0
 }
