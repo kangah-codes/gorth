@@ -103,6 +103,11 @@ var identifierMap = map[string]Token{
 	">=": GTE_OP,
 	"<=": LTE_OP,
 
+	// LOGICAL OPS
+	"&&": AND_OP,
+	"||": OR_OP,
+	"!":  NOT_OP,
+
 	// STACK MANIPULATION
 	"drop": DROP_OP,
 	"swap": SWAP_OP,
@@ -146,6 +151,11 @@ var tokenMap = map[Token]string{
 	LT_OP:  "LT_OP",
 	GTE_OP: "GTE_OP",
 	LTE_OP: "LTE_OP",
+
+	// LOGICAL OPS
+	AND_OP: "AND_OP",
+	OR_OP:  "OR_OP",
+	NOT_OP: "NOT_OP",
 
 	// MATH OPS
 	ADD_OP: "ADD_OP",
@@ -460,7 +470,7 @@ func PerformVariableAndValueArithmetic(g *Gorth, val1, val2 StackElement, op Ari
 
 func IsOperator(s string) bool {
 	_, ok := identifierMap[s]
-	return ok
+	return ok && s != "true" && s != "false"
 }
 
 func IsDecimal(c rune) bool {
@@ -1007,33 +1017,33 @@ func (g *Gorth) AssignVar() error {
 		return err
 	}
 
-	// means we have a type declaration
-	if _, ok := identifierMap[val1.Value]; ok && strings.Contains(PRIMITIVE_TYPES, val1.Value) {
+	// means we are declaring a constant variable
+	if val1.Value == "const" {
 		// val3 becomes the actual variable value
-		val3, err := g.Pop()
+		val2, err := g.Pop()
 		if err != nil {
 			return err
 		}
 
 		// val4 becomes the variable name
-		val4, err := g.Pop()
+		val3, err := g.Pop()
 		if err != nil {
 			return err
 		}
 
 		// check if the variable name is using a reserved keyword
-		if _, ok := identifierMap[val4.Value]; ok {
-			return fmt.Errorf("error: %v is a reserved keyword", val4.Value)
+		if _, ok := identifierMap[val3.Value]; ok {
+			return fmt.Errorf("error: %v is a reserved keyword", val3.Value)
 		}
 
 		// check if the variable is already defined
-		if _, ok := (g.SemanticAnalyser.SymbolTable.Variables)[strings.ToLower(val3.Value)]; ok && (g.SemanticAnalyser.SymbolTable.Variables)[val3.Value].Const {
-			return fmt.Errorf("error: variable %s is already defined", val3.Value)
+		if _, ok := (g.SemanticAnalyser.SymbolTable.Variables)[strings.ToLower(val2.Value)]; ok && (g.SemanticAnalyser.SymbolTable.Variables)[val2.Value].Const {
+			return fmt.Errorf("error: variable %s is already defined", val2.Value)
 		}
 
 		// always make strings lowercase in the variable map
 		// in this language, variables will be case insensitive
-		(g.SemanticAnalyser.SymbolTable.Variables)[strings.ToLower(val4.Value)] = Variable{Name: val4.Value, Value: val3, Const: false, Type: identifierMap[val1.Value]}
+		(g.SemanticAnalyser.SymbolTable.Variables)[strings.ToLower(val3.Value)] = Variable{Name: val3.Value, Value: val2, Const: true, Type: val2.Type}
 
 		// TODO: DO NOT PUSH DECLARED VARIABLES ONTO THE STACK, THEY WILL BE CONSUMED SO YOU HAVE TO ADD THEM WHEN YOU WANT TO USE THEM
 		// push the variable value to the stack
@@ -1284,6 +1294,37 @@ func (g *Gorth) LessThanEqual() error {
 	return nil
 }
 
+func (g *Gorth) And() error {
+	val1, val2, err := g.PopValues()
+	if err != nil {
+		return err
+	}
+
+	switch {
+	case val1.Type == VARIABLE:
+		variable, ok := g.SemanticAnalyser.SymbolTable.Variables[val1.Value]
+		if !ok {
+			return fmt.Errorf("variable %s is not defined", val1.Value)
+		}
+
+		val1 = variable.Value
+	case val2.Type == VARIABLE:
+		variable, ok := g.SemanticAnalyser.SymbolTable.Variables[val2.Value]
+		if !ok {
+			return fmt.Errorf("variable %s is not defined", val2.Value)
+		}
+
+		val2 = variable.Value
+	case val1.Type != BOOL || val2.Type != BOOL:
+		return fmt.Errorf("error: expected types (BOOL, BOOL), got (%s, %s  )instead", tokenMap[val1.Type], tokenMap[val2.Type])
+	}
+
+	result := val1.Value == "true" && val2.Value == "true"
+	g.Push(StackElement{Type: BOOL, Value: strconv.FormatBool(result)})
+
+	return nil
+}
+
 func (g *Gorth) ExecuteStack(p []StackElement) {
 	for _, e := range p {
 		switch e.Type {
@@ -1406,6 +1447,13 @@ func (g *Gorth) ExecuteStack(p []StackElement) {
 			}
 		case LTE_OP:
 			err := g.LessThanEqual()
+			if err != nil {
+				panic(err)
+			}
+
+		// LOGICAL OPS
+		case AND_OP:
+			err := g.And()
 			if err != nil {
 				panic(err)
 			}
@@ -1574,10 +1622,13 @@ func (l *Lexer) Lex() (Position, Token, string) {
 					}
 
 					return l.pos, DEREF_OP, fmt.Sprintf("&%s", digit)
+				} else if nextR == '&' {
+					return l.pos, AND_OP, "&&"
 				} else {
 					// means it's a variable pointer cos it's a string
 					// we need to get the variable name
 					// and check if it's a pointer and then dereference by its value
+
 					l.Backup()
 					_, lit := l.LexIdentifier()
 
@@ -1662,6 +1713,9 @@ func (l *Lexer) LexIdentifier() (Token, string) {
 				if IsOperator(lit) {
 					return identifierMap[lit], lit
 				} else {
+					if lit == "true" || lit == "false" {
+						return BOOL, lit
+					}
 					// TODO: Research which scenarios can cause this
 					return VARIABLE, lit
 				}
@@ -1675,6 +1729,10 @@ func (l *Lexer) LexIdentifier() (Token, string) {
 			// when we reach a newLine we return the current literal since we can't continue reading the identifier
 			if IsOperator(lit) {
 				return identifierMap[lit], lit
+			}
+
+			if lit == "true" || lit == "false" {
+				return BOOL, lit
 			}
 
 			// anything other than an operator is assumed to be a variable
@@ -1715,6 +1773,10 @@ func (l *Lexer) LexIdentifier() (Token, string) {
 				// Backup the reader
 				for i := 0; i < counts; i++ {
 					l.Backup()
+				}
+
+				if lit == "true" || lit == "false" {
+					return BOOL, lit
 				}
 
 				return VARIABLE, lit
@@ -1844,32 +1906,32 @@ func (p *Parser) Parse(pos Position, tok Token, lit string) (StackElement, error
 
 func (p *Parser) BuildAST(s []StackElement) (*Node, error) {
 	var stack []*Node
-	unaryOps := "print|drop|dup|dump|inc|dec|del"
-	binaryOps := "+|-|*|/|%|^|swap|over|=|==|!=|>|<|>=|<="
+	unaryOps := "print,drop,dup,dump,inc,dec,del"
+	binaryOps := "+,-,*,/,%,^,swap,over,=,==,!=,>,<,>=,<=,&&,!"
 	ternaryOps := "rot"
 
 	// assert that all ops are included
-	unOps := strings.Split(unaryOps, "|")
+	unOps := strings.Split(unaryOps, ",")
 	for _, op := range unOps {
 		_, ok := identifierMap[op]
 		if !ok {
-			return nil, fmt.Errorf("unknown operator: %s, did you perhaps forget to add it to the identifierMap?", op)
+			return nil, fmt.Errorf("unknown unary operator: %s, did you perhaps forget to add it to the identifierMap?", op)
 		}
 	}
 
-	binOps := strings.Split(binaryOps, "|")
+	binOps := strings.Split(binaryOps, ",")
 	for _, op := range binOps {
 		_, ok := identifierMap[op]
 		if !ok {
-			return nil, fmt.Errorf("unknown operator: %s, did you perhaps forget to add it to the identifierMap?", op)
+			return nil, fmt.Errorf("unknown binary operator: %s, did you perhaps forget to add it to the identifierMap?", op)
 		}
 	}
 
-	terOps := strings.Split(ternaryOps, "|")
+	terOps := strings.Split(ternaryOps, ",")
 	for _, op := range terOps {
 		_, ok := identifierMap[op]
 		if !ok {
-			return nil, fmt.Errorf("unknown operator: %s, did you perhaps forget to add it to the identifierMap?", op)
+			return nil, fmt.Errorf("unknown ternary operator: %s, did you perhaps forget to add it to the identifierMap?", op)
 		}
 	}
 
