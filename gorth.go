@@ -3,422 +3,935 @@ package main
 import (
 	"bufio"
 	"errors"
+	"flag"
 	"fmt"
+	"io"
 	"math"
 	"os"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
-)
-
-type Operation int
-
-const (
-	MAX_STACK_SIZE = 999_999
+	"syscall"
+	"unicode"
+	"unsafe"
 )
 
 const (
-	// Arithmetic operations
-	ADD_OP Operation = iota
+	EOF = iota
+	ILLEGAL
+
+	// TYPES
+	INT
+	STRING
+	BOOL
+	FLOAT
+	PTR
+
+	// POINTER MANIPULATION
+	DEREF_OP
+
+	// VARIABLE IDENTIFIER
+	VARIABLE
+
+	// MATH OPS
+	ADD_OP
 	SUB_OP
 	MUL_OP
 	DIV_OP
+	POW_OP
 	MOD_OP
-	EXP_OP
 	INC_OP
 	DEC_OP
 
-	// Stack manipulation operations
+	// STACK MANIPULATION
+	DROP_OP
 	SWAP_OP
 	DUP_OP
-	DROP_OP
-	DUMP_OP
+	OVER_OP
 	ROT_OP
+	DELETE_OP
 
-	// Print operation
+	// OPERATORS
 	PRINT_OP
+	PRINTLN_OP
+	DUMP_OP
 
-	// Logical operations
-	AND_OP
-	OR_OP
-	NOT_OP
-	EQUAL_OP
-	NOT_EQUAL_OP
-	EQUAL_TYP_OP // equal types
-	GT_THAN_OP
-	LS_THAN_OP
-	GT_THAN_EQ_OP
-	LS_THAN_EQ_OP
-
-	// assignment operation
-	VAR_ASSIGN_OP
+	// ASSIGNMENT
+	ASSIGN_OP
 )
-
-var operatorMap = map[string]Operation{
-	"+":     ADD_OP,
-	"-":     SUB_OP,
-	"*":     MUL_OP,
-	"/":     DIV_OP,
-	"%":     MOD_OP,
-	"^":     EXP_OP,
-	"++":    INC_OP,
-	"--":    DEC_OP,
-	"swap":  SWAP_OP,
-	"dup":   DUP_OP,
-	"drop":  DROP_OP,
-	"dump":  DUMP_OP,
-	"print": PRINT_OP,
-	"rot":   ROT_OP,
-	"&&":    AND_OP,
-	"||":    OR_OP,
-	"!":     NOT_OP,
-	"==":    EQUAL_OP,
-	"!=":    NOT_EQUAL_OP,
-	"===":   EQUAL_TYP_OP,
-	">":     GT_THAN_OP,
-	"<":     LS_THAN_OP,
-	">=":    GT_THAN_EQ_OP,
-	"<=":    LS_THAN_EQ_OP,
-	"=":     VAR_ASSIGN_OP,
-}
-
-type Type int
 
 const (
-	Int Type = iota
-	String
-	Bool
-	Float
-	Operator
-	Identifier
-	SpecialSymbol
-	KeyWord
+	PRIMITIVE_TYPES = "int|string|bool|float|ptr"
 )
 
-var typeMap = map[Type]string{
-	Int:           "int",
-	String:        "string",
-	Bool:          "bool",
-	Operator:      "operator",
-	Identifier:    "identifier",
-	SpecialSymbol: "special symbol",
-	KeyWord:       "keyword",
+// gotta do this cos this idiotic language doesn't support constant arrays
+var INCREMENTABLE_DEREMENTABLE_TYPES = []Token{INT, FLOAT, PTR}
+
+var identifierMap = map[string]Token{
+	// MATH OPS
+	"+":   ADD_OP,
+	"-":   SUB_OP,
+	"*":   MUL_OP,
+	"/":   DIV_OP,
+	"^":   POW_OP,
+	"%":   MOD_OP,
+	"inc": INC_OP,
+	"dec": DEC_OP,
+	"mod": MOD_OP,
+	"pow": POW_OP,
+
+	// ASSIGNMENT
+	"=": ASSIGN_OP,
+
+	// STACK MANIPULATION
+	"drop": DROP_OP,
+	"swap": SWAP_OP,
+	"dup":  DUP_OP,
+	"over": OVER_OP,
+	"rot":  ROT_OP,
+
+	// VARIABLE MANIPULATION
+	"del": DELETE_OP,
+
+	// PRINT OPS
+	"print":   PRINT_OP,
+	"println": PRINTLN_OP,
+	"dump":    DUMP_OP,
+
+	// TYPES
+	"str":   STRING,
+	"int":   INT,
+	"bool":  BOOL,
+	"float": FLOAT,
+	"ptr":   PTR,
 }
 
+var tokenMap = map[Token]string{
+	EOF:      "EOF",
+	ILLEGAL:  "ILLEGAL",
+	INT:      "INT",
+	STRING:   "STRING",
+	FLOAT:    "FLOAT",
+	BOOL:     "BOOL",
+	VARIABLE: "VARIABLE",
+	PTR:      "PTR",
+
+	// PTR OPS
+	DEREF_OP: "DEREF_OP",
+
+	// MATH OPS
+	ADD_OP: "ADD_OP",
+
+	// PRINT OPS
+	PRINT_OP:   "PRINT_OP",
+	PRINTLN_OP: "PRINTLN_OP",
+	DUMP_OP:    "DUMP_OP",
+
+	// STACK MANIPULATION
+	DROP_OP: "DROP_OP",
+	SWAP_OP: "SWAP_OP",
+	DUP_OP:  "DUP_OP",
+	OVER_OP: "OVER_OP",
+	ROT_OP:  "ROT_OP",
+
+	// ASSIGNMENT
+	ASSIGN_OP: "ASSIGN_OP",
+
+	// VARIABLE MANIPULATION
+	DELETE_OP: "DELETE_OP",
+}
+
+type Token int
 type StackElement struct {
-	Type  Type
-	Value interface{} // Use interface{} to support both int and string values
+	Type     Token
+	Value    string
+	Position Position
 }
 
-func (s *StackElement) Repr() string {
-	return fmt.Sprintf("Type: %v\nValue: %v", typeMap[s.Type], s.Value)
+type Node struct {
+	Value string
+	Left  *Node
+	Right *Node
+}
+
+type ArithmeticFunc func(float64, float64) (float64, error)
+
+var Add ArithmeticFunc = func(a, b float64) (float64, error) {
+	return a + b, nil
+}
+
+var Multiply ArithmeticFunc = func(a, b float64) (float64, error) {
+	return a * b, nil
+}
+
+var Subtract ArithmeticFunc = func(a, b float64) (float64, error) {
+	return b - a, nil
+}
+
+var Divide ArithmeticFunc = func(a, b float64) (float64, error) {
+	return b / a, nil
+}
+
+var Pow ArithmeticFunc = func(a, b float64) (float64, error) {
+	return math.Pow(b, a), nil
+}
+
+var Mod ArithmeticFunc = func(a, b float64) (float64, error) {
+	return math.Mod(b, a), nil
+}
+
+func PtrToInt(p string) int {
+	// remove * from the string
+	result, err := strconv.Atoi(strings.Trim(p, "*"))
+	if err != nil {
+		panic(err)
+	}
+
+	return result
+}
+
+func PtreDerefToValue(p string) string {
+	return strings.Trim(p, "&")
+}
+
+func ContainsValue[T any](arr []T, target T) bool {
+	for _, value := range arr {
+		if reflect.DeepEqual(value, target) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func PerformIntArithmetic(val1, val2 StackElement, op ArithmeticFunc) (StackElement, error) {
+	result1, err1 := strconv.Atoi(val1.Value)
+	if err1 != nil {
+		return StackElement{}, err1
+	}
+
+	result2, err2 := strconv.Atoi(val2.Value)
+	if err2 != nil {
+		return StackElement{}, err2
+	}
+
+	result, err := op(float64(result2), float64(result1))
+	if err != nil {
+		return StackElement{}, err
+	}
+
+	return StackElement{Type: INT, Value: strconv.Itoa(int(result)), Position: val2.Position}, nil
+}
+
+func PerformFloatArithmetic(val1, val2 StackElement, op ArithmeticFunc) (StackElement, error) {
+	result1, err1 := strconv.ParseFloat(val1.Value, 64)
+	if err1 != nil {
+		return StackElement{}, err1
+	}
+
+	result2, err2 := strconv.ParseFloat(val2.Value, 64)
+	if err2 != nil {
+		return StackElement{}, err2
+	}
+
+	result, err := op(result2, result1)
+	if err != nil {
+		return StackElement{}, err
+	}
+
+	return StackElement{Type: FLOAT, Value: fmt.Sprintf("%f", result), Position: val2.Position}, nil
+}
+
+func PerformStringArithmetic(val1, val2 StackElement) (StackElement, error) {
+	result := val2.Value + val1.Value
+	return StackElement{Type: STRING, Value: result, Position: val2.Position}, nil
+}
+
+func PerformMixedArithmetic(val1, val2 StackElement, op ArithmeticFunc) (StackElement, error) {
+	result1, err1 := strconv.ParseFloat(val1.Value, 64)
+	if err1 != nil {
+		return StackElement{}, err1
+	}
+
+	result2, err2 := strconv.ParseFloat(val2.Value, 64)
+	if err2 != nil {
+		return StackElement{}, err2
+	}
+
+	result, err := op(result2, result1)
+	if err != nil {
+		return StackElement{}, err
+	}
+
+	return StackElement{Type: FLOAT, Value: fmt.Sprintf("%f", result), Position: val2.Position}, nil
+}
+
+func PerformVariableArithmetic(g *Gorth, val1, val2 StackElement, op ArithmeticFunc) (StackElement, error) {
+	if _, ok := (g.SemanticAnalyser.SymbolTable.Variables)[val1.Value]; !ok {
+		return StackElement{}, fmt.Errorf("error: variable %s is not defined", val1.Value)
+	}
+
+	if _, ok := (g.SemanticAnalyser.SymbolTable.Variables)[val2.Value]; !ok {
+		return StackElement{}, fmt.Errorf("error: variable %s is not defined", val2.Value)
+	}
+
+	val1Value := (g.SemanticAnalyser.SymbolTable.Variables)[val1.Value].Value
+	val2Value := (g.SemanticAnalyser.SymbolTable.Variables)[val2.Value].Value
+
+	var result float64
+	var err error
+
+	fmt.Println("Incrementing pointer ", tokenMap[val1.Type], " by ", tokenMap[val2.Type])
+
+	switch {
+	case val1Value.Type == INT && val2Value.Type == INT:
+		result1, err1 := strconv.Atoi(val1Value.Value)
+		if err1 != nil {
+			return StackElement{}, err1
+		}
+
+		result2, err2 := strconv.Atoi(val2Value.Value)
+		if err2 != nil {
+			return StackElement{}, err2
+		}
+
+		result, err = op(float64(result1), float64(result2))
+	// increasing the value of a ptr
+	case val2Value.Type == PTR && val1Value.Type == INT:
+		result1, err1 := strconv.Atoi(val1Value.Value)
+		if err1 != nil {
+			return StackElement{}, err1
+		}
+
+		result2, err2 := strconv.Atoi(val2Value.Value)
+		if err2 != nil {
+			return StackElement{}, err2
+		}
+
+		result, err = op(float64(result1), float64(result2))
+	case val1Value.Type == FLOAT && val2Value.Type == FLOAT:
+		result1, err1 := strconv.ParseFloat(val1Value.Value, 64)
+		if err1 != nil {
+			return StackElement{}, err1
+		}
+
+		result2, err2 := strconv.ParseFloat(val2Value.Value, 64)
+		if err2 != nil {
+			return StackElement{}, err2
+		}
+
+		result, err = op(result1, result2)
+	case (val1Value.Type == INT && val2Value.Type == FLOAT) || (val1Value.Type == FLOAT && val2Value.Type == INT):
+		result1, err1 := strconv.ParseFloat(val1Value.Value, 64)
+		if err1 != nil {
+			return StackElement{}, err1
+		}
+
+		result2, err2 := strconv.ParseFloat(val2Value.Value, 64)
+		if err2 != nil {
+			return StackElement{}, err2
+		}
+
+		result, err = op(result1, result2)
+	case val1Value.Type == STRING && val2Value.Type == STRING:
+		result := val1Value.Value + val2Value.Value
+
+		(g.SemanticAnalyser.SymbolTable.Variables)[val2.Value] = Variable{Name: val2.Value, Value: StackElement{Type: STRING, Value: result, Position: val2.Position}, Const: false}
+		return StackElement{Type: VARIABLE, Value: val2.Value, Position: val2.Position}, nil
+	default:
+		return StackElement{}, fmt.Errorf("error: cannot perform %s on %s and %s", fmt.Sprintf("%v", op), tokenMap[val1Value.Type], tokenMap[val2Value.Type])
+	}
+
+	if err != nil {
+		return StackElement{}, err
+	}
+
+	var resultType Token
+	if val1Value.Type == INT && val2Value.Type == INT {
+		resultType = INT
+	} else {
+		resultType = FLOAT
+	}
+
+	(g.SemanticAnalyser.SymbolTable.Variables)[val2.Value] = Variable{Name: val2.Value, Value: StackElement{Type: resultType, Value: fmt.Sprintf("%v", result), Position: val2.Position}, Const: false, Type: resultType}
+	return StackElement{Type: VARIABLE, Value: val2.Value, Position: val2.Position}, nil
+}
+
+func PerformVariableAndValueArithmetic(g *Gorth, val1, val2 StackElement, op ArithmeticFunc) (StackElement, error) {
+	if _, ok := (g.SemanticAnalyser.SymbolTable.Variables)[val1.Value]; !ok {
+		return StackElement{}, fmt.Errorf("error: variable %s is not defined", val1.Value)
+	}
+
+	val1Value := (g.SemanticAnalyser.SymbolTable.Variables)[val1.Value].Value
+
+	var result float64
+	var err error
+
+	switch {
+	case val1Value.Type == INT && val2.Type == INT:
+		result1, err1 := strconv.Atoi(val1Value.Value)
+		if err1 != nil {
+			return StackElement{}, err1
+		}
+
+		result2, err2 := strconv.Atoi(val2.Value)
+		if err2 != nil {
+			return StackElement{}, err2
+		}
+
+		result, err = op(float64(result2), float64(result1))
+	// incrementing a variable pointer by an int
+	// pointers are stored as ints and can only be incremented by ints
+	// case val1Value.Type == PTR && val2.Type == INT:
+	// 	result1 := PtrToInt(val1Value.Value)
+
+	// 	result2, err2 := strconv.Atoi(val2.Value)
+	// 	if err2 != nil {
+	// 		return StackElement{}, err2
+	// 	}
+
+	// 	result, err = op(float64(result1), float64(result2))
+	case val1Value.Type == FLOAT && val2.Type == FLOAT:
+		result1, err1 := strconv.ParseFloat(val1Value.Value, 64)
+		if err1 != nil {
+			return StackElement{}, err1
+		}
+
+		result2, err2 := strconv.ParseFloat(val2.Value, 64)
+		if err2 != nil {
+			return StackElement{}, err2
+		}
+
+		result, err = op(result2, result1)
+	case (val1Value.Type == INT && val2.Type == FLOAT) || (val1Value.Type == FLOAT && val2.Type == INT):
+		result1, err1 := strconv.ParseFloat(val1Value.Value, 64)
+		if err1 != nil {
+			return StackElement{}, err1
+		}
+
+		result2, err2 := strconv.ParseFloat(val2.Value, 64)
+		if err2 != nil {
+			return StackElement{}, err2
+		}
+
+		// did this because if the op is subtraction or division, the order matters
+		result, err = op(result2, result1)
+	case val1Value.Type == STRING && val2.Type == STRING:
+		result := val2.Value + val1Value.Value
+
+		(g.SemanticAnalyser.SymbolTable.Variables)[val1.Value] = Variable{Name: val1.Value, Value: StackElement{Type: STRING, Value: result, Position: val1Value.Position}, Const: false, Type: STRING}
+		return StackElement{Type: VARIABLE, Value: val1.Value, Position: val1Value.Position}, nil
+	default:
+		return StackElement{}, fmt.Errorf("error: cannot perform %s on %s and %s", fmt.Sprintf("%v", op), tokenMap[val1Value.Type], tokenMap[val2.Type])
+	}
+
+	if err != nil {
+		return StackElement{}, err
+	}
+
+	var resultType Token
+	if val1Value.Type == INT && val2.Type == INT {
+		resultType = INT
+	} else {
+		resultType = FLOAT
+	}
+
+	(g.SemanticAnalyser.SymbolTable.Variables)[val1.Value] = Variable{Name: val1.Value, Value: StackElement{Type: resultType, Value: fmt.Sprintf("%v", result), Position: val1Value.Position}, Const: false, Type: resultType}
+	return StackElement{Type: VARIABLE, Value: val1.Value, Position: val1Value.Position}, nil
+}
+
+func IsOperator(s string) bool {
+	_, ok := identifierMap[s]
+	return ok
+}
+
+func IsDecimal(c rune) bool {
+	return c == '.'
+}
+
+func PrintUsage() {
+	fmt.Println("Usage: gorth <filename> [options]")
+	fmt.Println("  filename: the name of the .gorth file to execute")
+	fmt.Println("  options:")
+	fmt.Println("    -d: optional enable debug mode")
+	fmt.Println("    -s: optional enable strict mode")
 }
 
 type Variable struct {
-	Type  Type
-	Value interface{}
 	Name  string
+	Value StackElement
 	Const bool
+	Type  Token
 }
 
 type Gorth struct {
-	ExecStack    []StackElement
-	VariableMap  map[string]Variable
-	DebugMode    bool
-	StrictMode   bool
-	MaxStackSize int
+	StrictMode       bool
+	DebugMode        bool
+	ExecutionStack   []StackElement
+	Parser           *Parser
+	Lexer            *Lexer
+	SemanticAnalyser *SemanticAnalyser
 }
 
-func NewGorth(debugMode, strictMode bool) *Gorth {
+func NewGorth(s bool, d bool, p *Parser, l *Lexer, a *SemanticAnalyser) *Gorth {
 	return &Gorth{
-		ExecStack:    []StackElement{},
-		DebugMode:    debugMode,
-		StrictMode:   strictMode,
-		MaxStackSize: MAX_STACK_SIZE,
+		StrictMode:       s,
+		DebugMode:        d,
+		ExecutionStack:   make([]StackElement, 0),
+		Parser:           p,
+		Lexer:            l,
+		SemanticAnalyser: a,
 	}
 }
 
-// ReadGorthFile reads a .gorth file and returns the contents as a slice of strings.
-func ReadGorthFile(filename string) ([]string, error) {
-	file, err := os.Open(filename)
-	if err != nil {
-		return nil, err
+func (g *Gorth) ExecStackRepr() {
+	// pretty print the stack
+	fmt.Println("Stack:")
+	for i := len(g.ExecutionStack) - 1; i >= 0; i-- {
+		fmt.Printf("\t\tType: %v, Value: %v, Line: %v, Col: %v\n", tokenMap[g.ExecutionStack[i].Type], g.ExecutionStack[i].Value, g.ExecutionStack[i].Position.line, g.ExecutionStack[i].Position.column)
 	}
-	defer file.Close()
-
-	var lines []string
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		// if line starts with a comment, ignore it
-		if strings.HasPrefix(scanner.Text(), "#") {
-			continue
-		}
-		lines = append(lines, scanner.Text())
-	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, err
-	}
-
-	return lines, nil
-}
-
-const (
-	StateNormal = iota
-	StateVarDeclaration
-)
-
-type Tokeniser struct {
-	HandleToken func(s string) ([]StackElement, map[string]Variable, error)
-}
-
-type TokeniserStateMachine struct {
-	CurrentState int
-	States       map[int]Tokeniser
-}
-
-func (t *TokeniserStateMachine) SetState(state int) {
-	t.CurrentState = state
-}
-
-// Tokenizer
-func Tokenize(s string) ([]StackElement, map[string]Variable, error) {
-	var tokens []StackElement
-	var lastAddedVariable Variable
-	variables := make(map[string]Variable)
-
-	// Define regex patterns
-	integerRegex := regexp.MustCompile(`^-?\d+$`)
-	floatRegex := regexp.MustCompile(`^-?\d+\.\d+$`)
-	stringRegex := regexp.MustCompile(`^".*"$`)
-	boolRegex := regexp.MustCompile(`^(true|false)$`)
-	operatorRegex := regexp.MustCompile(`^(\+|-|\*|/|%|\^|\+\+|--|neg|swap|dup|drop|dump|print|rot|&&|\|\||!|==|!=|===|>|<|>=|<=|=)$`)
-	varNameRegex := regexp.MustCompile(`^\/[a-zA-Z_][a-zA-Z0-9_]*$`)
-	varUsageRegex := regexp.MustCompile(`^_[a-zA-Z_][a-zA-Z0-9_]*$`)
-	// TODO: rename this
-	keyWordRegex := regexp.MustCompile(`^(def|const|=)$`)
-	// using variables : _varName
-
-	// Split the string into tokens
-	r := regexp.MustCompile(`"[^"]*"|\S+`)
-	parts := r.FindAllString(s, -1)
-
-	// Current state
-	state := StateNormal
-	stateMachine := TokeniserStateMachine{}
-	stateMachine.SetState(state)
-
-	// Define state machine
-	stateMachine.States = map[int]Tokeniser{
-		StateNormal: {
-			HandleToken: func(s string) ([]StackElement, map[string]Variable, error) {
-				switch {
-				case integerRegex.MatchString(s):
-					val, _ := strconv.Atoi(s)
-					tokens = append(tokens, StackElement{Type: Int, Value: val})
-				case floatRegex.MatchString(s):
-					val, _ := strconv.ParseFloat(s, 64)
-					tokens = append(tokens, StackElement{Type: Float, Value: val})
-				case stringRegex.MatchString(s):
-					value := strings.Trim(s, `"`)
-					tokens = append(tokens, StackElement{Type: String, Value: value})
-				case boolRegex.MatchString(s):
-					val := s == "true"
-					tokens = append(tokens, StackElement{Type: Bool, Value: val})
-				case operatorRegex.MatchString(s):
-					tokens = append(tokens, StackElement{Type: Operator, Value: operatorMap[s]})
-				case keyWordRegex.MatchString(s):
-					// Reset back to normal state since we've encountered the def keyword which means we're done declaring variables
-					if strings.TrimSpace(s) == "const" {
-						// variable is a constant
-						lastAddedVariable.Const = true
-						variables[lastAddedVariable.Name] = lastAddedVariable
-					}
-				case operatorRegex.MatchString(s):
-					// means an operator comes after a variable, most likely we are reassiging a variable
-					if len(variables) < 1 {
-						return nil, nil, errors.New("ERROR: no variable to assign to")
-					}
-
-					if strings.TrimSpace(s) == "=" && lastAddedVariable.Const {
-						return nil, nil, errors.New("ERROR: cannot reassign a constant")
-					}
-				// had to add new syntax to check if a variable was being used
-				// because the same syntax caused a bug where the last known variable was used even if
-				// the variable name was not the same
-				/* Example:
-				 * /myName "Joshua" def
-				 * /notMyName print
-				 * This code should throw an error since we don't have notMyName,
-				 * But since our state machine recognises that syntax for variable declaration
-				 * We just jump into adding the print operation to the exec stack,
-				 * Which then pops the topmost value which would be the last known variable, ie. myName
-				 */
-				case varUsageRegex.MatchString(s):
-					// check if the variable exists
-					// if it does, add it's value to the tokens
-					variable, exists := variables[s[1:]]
-
-					if !exists {
-						return nil, nil, fmt.Errorf("variable %s has not been declared", s[1:])
-					}
-
-					// tokens = append(tokens, StackElement{Type: variable.Type, Value: variable.Value})
-					tokens = append(tokens, StackElement{Type: Identifier, Value: variable.Name})
-				default:
-					return nil, nil, fmt.Errorf("invalid token: %s", s)
-				}
-
-				return tokens, nil, nil
-			},
-		},
-		StateVarDeclaration: {
-			HandleToken: func(part string) ([]StackElement, map[string]Variable, error) {
-				// Assuming the value immediately follows the variable name
-				// Add the variable and its value to the map
-				// check if the variable map is not empty
-				// if it is not empty, get the last token and add the value to the variable map
-				// if it is empty, return an error
-				if len(variables) > 0 {
-					if operatorRegex.MatchString(part) {
-						// idk why this would happen
-						tokens = append(tokens, StackElement{Type: Operator, Value: operatorMap[part]})
-					} else {
-						switch {
-						case integerRegex.MatchString(part):
-							val, _ := strconv.Atoi(part)
-							lastAddedVariable.Value = val
-							lastAddedVariable.Type = Int
-							variables[lastAddedVariable.Name] = lastAddedVariable
-							tokens = append(tokens, StackElement{Type: Identifier, Value: lastAddedVariable.Name})
-						case floatRegex.MatchString(part):
-							val, _ := strconv.ParseFloat(part, 64)
-							lastAddedVariable.Value = val
-							lastAddedVariable.Type = Float
-							variables[lastAddedVariable.Name] = lastAddedVariable
-							tokens = append(tokens, StackElement{Type: Identifier, Value: lastAddedVariable.Name})
-						case stringRegex.MatchString(part):
-							value := strings.Trim(part, `"`)
-							lastAddedVariable.Value = value
-							lastAddedVariable.Type = String
-							variables[lastAddedVariable.Name] = lastAddedVariable
-							tokens = append(tokens, StackElement{Type: Identifier, Value: lastAddedVariable.Name})
-						case boolRegex.MatchString(part):
-							val := part == "true"
-							lastAddedVariable.Value = val
-							lastAddedVariable.Type = Bool
-							variables[lastAddedVariable.Name] = lastAddedVariable
-							tokens = append(tokens, StackElement{Type: Identifier, Value: lastAddedVariable.Name})
-						default:
-							return nil, nil, fmt.Errorf("invalid type: %s", part)
-						}
-					}
-				}
-
-				// Reset the state to normal
-				stateMachine.SetState(StateNormal)
-
-				return nil, variables, nil
-			},
-		},
-	}
-
-	// Parse each token
-	for _, part := range parts {
-		// Check if the variable name already exists
-		if _, exists := variables[part]; exists {
-			return nil, nil, fmt.Errorf("variable %s is already declared", part)
-		}
-
-		// set the machine state based on the current token
-		if varNameRegex.MatchString(part) {
-			// check if variable already exists in the map
-			_, exists := variables[part[1:]]
-
-			if exists {
-				// just jump because we've already declared the variable
-				// and we're probably just using it
-				continue
-			} else {
-				stateMachine.SetState(StateVarDeclaration)
-				varName := part[1:] // Remove the leading '/'
-				variables[varName] = Variable{Name: varName, Type: Identifier}
-				lastAddedVariable = variables[varName]
-				continue
-			}
-
-		}
-
-		_, _, err := stateMachine.States[stateMachine.CurrentState].HandleToken(part)
-
-		if err != nil {
-			return nil, nil, err
-		}
-	}
-
-	return tokens, variables, nil
-}
-
-func (g *Gorth) GPrint(val interface{}) {
-	if g.DebugMode {
-		fmt.Println(val)
-	}
-}
-
-func (g *Gorth) Push(val StackElement) error {
-	if len(g.ExecStack) >= g.MaxStackSize {
-		return errors.New("ERROR: stack overflow")
-	}
-	g.ExecStack = append(g.ExecStack, val)
-	return nil
+	fmt.Printf("\t\t%v\n", g.ExecutionStack)
 }
 
 func (g *Gorth) Pop() (StackElement, error) {
-	if len(g.ExecStack) < 1 {
-		return StackElement{}, errors.New("ERROR: cannot pop from an empty stack")
+	if len(g.ExecutionStack) == 0 {
+		return StackElement{}, fmt.Errorf("error: cannot pop from an empty stack")
 	}
-	val := g.ExecStack[len(g.ExecStack)-1]
-	g.ExecStack = g.ExecStack[:len(g.ExecStack)-1]
-	return val, nil
+
+	element := g.ExecutionStack[len(g.ExecutionStack)-1]
+	g.ExecutionStack = g.ExecutionStack[:len(g.ExecutionStack)-1]
+
+	return element, nil
 }
 
-func (g *Gorth) Drop() error {
-	if len(g.ExecStack) < 1 {
-		return errors.New("ERROR: cannot drop from an empty stack")
-	}
-
-	// if g is a variable, delete it from the variable map
-	// since it's no longer in use
-	if g.ExecStack[len(g.ExecStack)-1].Type == Identifier {
-		delete(g.VariableMap, g.ExecStack[len(g.ExecStack)-1].Value.(string))
-	}
-
-	_, err := g.Pop()
-
-	return err
-}
-
-func (g *Gorth) Dump() error {
+func (g *Gorth) Dereference() error {
+	// adds the value of the dereferenced ptr to the stack
 	val, err := g.Pop()
 	if err != nil {
 		return err
 	}
 
-	switch val.Type {
-	case Int, String, Bool:
-		fmt.Println(val.Value)
-	case Identifier:
-		fmt.Println(g.VariableMap[val.Value.(string)].Value)
-	default:
-		return errors.New("ERROR: top element is not a printable type")
+	var derefVal StackElement
+	derefPtr := PtreDerefToValue(val.Value)
+	derefType := g.SemanticAnalyser.InferType(derefPtr)
+
+	// we're dereferencing by using a raw int value
+	if derefType == INT {
+		if PtrToInt(derefPtr) > len(g.ExecutionStack)-1 {
+			return fmt.Errorf("error: execution stack index %v out of range with length %v", derefPtr, len(g.ExecutionStack))
+		}
+
+		ref := g.ExecutionStack[PtrToInt(derefPtr)]
+		derefVal = ref
+	} else {
+		// we're dereferencing using a variable containing a ptr
+		// first check if it exists
+		if _, ok := g.SemanticAnalyser.SymbolTable.Variables[derefPtr]; !ok {
+			return fmt.Errorf("error: variable %v is not defined", derefPtr)
+		}
+
+		derefVal = g.ExecutionStack[PtrToInt(g.SemanticAnalyser.SymbolTable.Variables[derefPtr].Value.Value)]
 	}
+
+	g.Push(derefVal)
+	return nil
+
+}
+
+func (g *Gorth) PopValues() (StackElement, StackElement, error) {
+	if len(g.ExecutionStack) < 2 {
+		return StackElement{}, StackElement{}, fmt.Errorf("error: cannot pop values from an empty stack")
+	}
+
+	val1, err := g.Pop()
+	if err != nil {
+		return StackElement{}, StackElement{}, err
+	}
+
+	val2, err := g.Pop()
+	if err != nil {
+		return StackElement{}, StackElement{}, err
+	}
+
+	return val1, val2, nil
+}
+
+func (g *Gorth) Push(e StackElement) {
+	g.ExecutionStack = append(g.ExecutionStack, e)
+}
+
+func (g *Gorth) Peek() (StackElement, error) {
+	if len(g.ExecutionStack) == 0 {
+		return StackElement{}, fmt.Errorf("error: cannot peek an empty stack")
+	}
+
+	return g.ExecutionStack[len(g.ExecutionStack)-1], nil
+}
+
+func (g *Gorth) Print() error {
+	// print the top of the stack
+	val, err := g.Peek()
+	if err != nil {
+		return err
+	}
+
+	if val.Type == VARIABLE {
+		// check if the variable is defined
+		if _, ok := (g.SemanticAnalyser.SymbolTable.Variables)[PtreDerefToValue(val.Value)]; !ok {
+			return fmt.Errorf("error: variable %s is not defined", val.Value)
+		}
+
+		// if we're dealing with a ptr deref get the actual value
+		if strings.Contains(val.Value, "&") {
+			val = g.ExecutionStack[PtrToInt(g.SemanticAnalyser.SymbolTable.Variables[PtreDerefToValue(val.Value)].Value.Value)]
+		} else {
+			val = (g.SemanticAnalyser.SymbolTable.Variables)[PtreDerefToValue(val.Value)].Value
+		}
+	}
+
+	// we're dealing with a raw number deref
+	if val.Type == INT && strings.Contains(val.Value, "&") {
+		val = g.ExecutionStack[PtrToInt(PtreDerefToValue(val.Value))]
+	}
+
+	var sysret syscall.Errno
+
+	bytes := []byte(val.Value)
+	_, _, sysret = syscall.Syscall(syscall.SYS_WRITE, 1, uintptr(unsafe.Pointer(&bytes[0])), uintptr(len(bytes)))
+	if sysret != 0 {
+		return fmt.Errorf("error: %v", syscall.Errno(-sysret))
+	}
+
+	return nil
+}
+
+func (g *Gorth) Println() error {
+	// print the top of the stack
+	val, err := g.Peek()
+	if err != nil {
+		return err
+	}
+
+	if val.Type == VARIABLE {
+		// check if the variable is defined
+		if _, ok := (g.SemanticAnalyser.SymbolTable.Variables)[PtreDerefToValue(val.Value)]; !ok {
+			return fmt.Errorf("error: variable %s is not defined", val.Value)
+		}
+
+		// if we're dealing with a ptr deref get the actual value
+		if strings.Contains(val.Value, "&") {
+			val = g.ExecutionStack[PtrToInt(g.SemanticAnalyser.SymbolTable.Variables[PtreDerefToValue(val.Value)].Value.Value)]
+		} else {
+			val = (g.SemanticAnalyser.SymbolTable.Variables)[PtreDerefToValue(val.Value)].Value
+		}
+	}
+
+	// we're dealing with a raw number deref
+	if val.Type == INT && strings.Contains(val.Value, "&") {
+		val = g.ExecutionStack[PtrToInt(PtreDerefToValue(val.Value))]
+	}
+
+	var sysret syscall.Errno
+
+	bytes := append([]byte(val.Value), '\n')
+	_, _, sysret = syscall.Syscall(syscall.SYS_WRITE, 1, uintptr(unsafe.Pointer(&bytes[0])), uintptr(len(bytes)))
+	if sysret != 0 {
+		return fmt.Errorf("error: %v", syscall.Errno(-sysret))
+	}
+
+	return nil
+}
+
+func (g *Gorth) Dump() error {
+	err := g.Print()
+	if err != nil {
+		return err
+	}
+
+	err = g.Drop()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (g *Gorth) PerformArithmetic(val1, val2 StackElement, op ArithmeticFunc) (StackElement, error) {
+	switch {
+	case val1.Type == INT && val2.Type == INT:
+		return PerformIntArithmetic(val1, val2, op)
+	case val1.Type == FLOAT && val2.Type == FLOAT:
+		return PerformFloatArithmetic(val1, val2, op)
+	case val1.Type == STRING && val2.Type == STRING:
+		return PerformStringArithmetic(val1, val2)
+	case (val1.Type == INT && val2.Type == FLOAT) || (val1.Type == FLOAT && val2.Type == INT):
+		return PerformMixedArithmetic(val1, val2, op)
+	case val1.Type == PTR && val2.Type == INT || val2.Type == PTR && val1.Type == INT || val1.Type == PTR && val2.Type == PTR:
+		return PerformIntArithmetic(val1, val2, op)
+	case val1.Type == VARIABLE && val2.Type == VARIABLE:
+		return PerformVariableArithmetic(g, val1, val2, op)
+	case val1.Type == VARIABLE:
+		return PerformVariableAndValueArithmetic(g, val1, val2, op)
+	case val2.Type == VARIABLE:
+		return PerformVariableAndValueArithmetic(g, val2, val1, op)
+	default:
+		return StackElement{}, fmt.Errorf("error: cannot perform op on %s and %s", tokenMap[val1.Type], tokenMap[val2.Type])
+	}
+}
+
+func (g *Gorth) Add() error {
+	val1, val2, err := g.PopValues()
+	if err != nil {
+		return err
+	}
+
+	result, err := g.PerformArithmetic(val1, val2, Add)
+	if err != nil {
+		return err
+	}
+
+	g.Push(result)
+	return nil
+}
+
+func (g *Gorth) Subtract() error {
+	val1, val2, err := g.PopValues()
+	if err != nil {
+		return err
+	}
+
+	result, err := g.PerformArithmetic(val1, val2, Subtract)
+	if err != nil {
+		return err
+	}
+
+	g.Push(result)
+	return nil
+}
+
+func (g *Gorth) Multiply() error {
+	val1, val2, err := g.PopValues()
+	if err != nil {
+		return err
+	}
+
+	result, err := g.PerformArithmetic(val1, val2, Multiply)
+	if err != nil {
+		return err
+	}
+
+	g.Push(result)
+	return nil
+}
+
+func (g *Gorth) Divide() error {
+	val1, val2, err := g.PopValues()
+	if err != nil {
+		return err
+	}
+
+	result, err := g.PerformArithmetic(val1, val2, Divide)
+	if err != nil {
+		return err
+	}
+
+	g.Push(result)
+	return nil
+}
+
+func (g *Gorth) Pow() error {
+	val1, val2, err := g.PopValues()
+	if err != nil {
+		return err
+	}
+
+	result, err := g.PerformArithmetic(val1, val2, Pow)
+	if err != nil {
+		return err
+	}
+
+	g.Push(result)
+	return nil
+}
+
+func (g *Gorth) Mod() error {
+	val1, val2, err := g.PopValues()
+	if err != nil {
+		return err
+	}
+
+	result, err := g.PerformArithmetic(val1, val2, Mod)
+	if err != nil {
+		return err
+	}
+
+	g.Push(result)
+	return nil
+}
+
+func (g *Gorth) Increment() error {
+	val, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	// if value is a variable, point to it's value instead
+	if val.Type == VARIABLE {
+		// check if it exists
+		if _, ok := g.SemanticAnalyser.SymbolTable.Variables[val.Value]; !ok {
+			return fmt.Errorf("error: variable %v is not defined", val.Value)
+		}
+
+		// check if the variable value is actually an incrementable type
+		if !ContainsValue(INCREMENTABLE_DEREMENTABLE_TYPES, g.SemanticAnalyser.SymbolTable.Variables[val.Value].Value.Type) {
+			return fmt.Errorf("error: variable %v is not an incrementable type. expected INT, FLOAT, PTR got %v instead", val.Value, tokenMap[g.SemanticAnalyser.SymbolTable.Variables[val.Value].Value.Type])
+		}
+
+		// we turn it back into a string to appease the go gods... since literals are stored as strings
+		// also i anticipated this would fail for regular variable int increments, but guess it still workds cause ptrtoint returns the string as a number
+		result, err := g.PerformArithmetic(StackElement{Type: g.SemanticAnalyser.SymbolTable.Variables[val.Value].Value.Type, Value: fmt.Sprintf("%v", PtrToInt(g.SemanticAnalyser.SymbolTable.Variables[val.Value].Value.Value)), Position: g.SemanticAnalyser.SymbolTable.Variables[val.Value].Value.Position}, StackElement{Type: INT, Value: "1", Position: val.Position}, Add)
+		if err != nil {
+			return err
+		}
+
+		g.SemanticAnalyser.SymbolTable.Variables[val.Value] = Variable{Value: result, Type: g.SemanticAnalyser.InferType(result.Value), Const: false, Name: val.Value}
+		g.Push(result)
+		return nil
+	}
+
+	// check if the variable value is actually an incrementable type
+	if !ContainsValue(INCREMENTABLE_DEREMENTABLE_TYPES, val.Type) {
+		return fmt.Errorf("error: %v is not an incrementable type. expected INT, FLOAT, PTR got %v instead", val.Value, tokenMap[val.Type])
+	}
+
+	result, err := g.PerformArithmetic(val, StackElement{Type: INT, Value: "1", Position: val.Position}, Add)
+	if err != nil {
+		return err
+	}
+
+	g.Push(result)
+	return nil
+}
+
+func (g *Gorth) Decrement() error {
+	val, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	// if value is a variable, point to it's value instead
+	if val.Type == VARIABLE {
+		// check if it exists
+		if _, ok := g.SemanticAnalyser.SymbolTable.Variables[val.Value]; !ok {
+			return fmt.Errorf("error: variable %v is not defined", val.Value)
+		}
+
+		// check if the variable value is actually an incrementable type
+		if !ContainsValue(INCREMENTABLE_DEREMENTABLE_TYPES, g.SemanticAnalyser.SymbolTable.Variables[val.Value].Value.Type) {
+			return fmt.Errorf("error: variable %v is not an decrementable type. expected INT, FLOAT, PTR got %v instead", val.Value, tokenMap[g.SemanticAnalyser.SymbolTable.Variables[val.Value].Value.Type])
+		}
+
+		// we turn it back into a string to appease the go gods... since literals are stored as strings
+		// also i anticipated this would fail for regular variable int increments, but guess it still workds cause ptrtoint returns the string as a number
+		result, err := g.PerformArithmetic(StackElement{Type: INT, Value: "1", Position: val.Position}, StackElement{Type: g.SemanticAnalyser.SymbolTable.Variables[val.Value].Value.Type, Value: fmt.Sprintf("%v", PtrToInt(g.SemanticAnalyser.SymbolTable.Variables[val.Value].Value.Value)), Position: g.SemanticAnalyser.SymbolTable.Variables[val.Value].Value.Position}, Add)
+		if err != nil {
+			return err
+		}
+
+		g.SemanticAnalyser.SymbolTable.Variables[val.Value] = Variable{Value: result, Type: g.SemanticAnalyser.InferType(result.Value), Const: false, Name: val.Value}
+		g.Push(result)
+		return nil
+	}
+
+	// check if the variable value is actually an incrementable type
+	if !ContainsValue(INCREMENTABLE_DEREMENTABLE_TYPES, val.Type) {
+		return fmt.Errorf("error: %v is not an decrementable type. expected INT, FLOAT, PTR got %v instead", val.Value, tokenMap[val.Type])
+	}
+
+	result, err := g.PerformArithmetic(StackElement{Type: INT, Value: "1", Position: val.Position}, val, Subtract)
+	if err != nil {
+		return err
+	}
+
+	g.Push(result)
+	return nil
+}
+
+func (g *Gorth) Drop() error {
+	if len(g.ExecutionStack) == 0 {
+		return fmt.Errorf("error: cannot drop from an empty stack")
+	}
+
+	_, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (g *Gorth) Swap() error {
+	if len(g.ExecutionStack) < 2 {
+		return fmt.Errorf("error: cannot swap with less than 2 elements in the stack")
+	}
+
+	val1, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	val2, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	g.Push(val1)
+	g.Push(val2)
+
+	return nil
+}
+
+func (g *Gorth) Dup() error {
+	if len(g.ExecutionStack) == 0 {
+		return fmt.Errorf("error: cannot duplicate from an empty stack")
+	}
+
+	val, err := g.Peek()
+	if err != nil {
+		return err
+	}
+
+	g.Push(val)
+
+	return nil
+}
+
+func (g *Gorth) Over() error {
+	if len(g.ExecutionStack) < 2 {
+		return fmt.Errorf("error: cannot perform over with less than 2 elements in the stack")
+	}
+
+	val1, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	val2, err := g.Pop()
+	if err != nil {
+		return err
+	}
+
+	g.Push(val2)
+	g.Push(val1)
+	g.Push(val2)
+
 	return nil
 }
 
 func (g *Gorth) Rot() error {
-	if len(g.ExecStack) < 3 {
-		return errors.New("ERROR: at least 3 elements need to be on stack to perform ROT_OP")
+	if len(g.ExecutionStack) < 3 {
+		return fmt.Errorf("error: cannot perform rot with less than 3 elements in the stack")
 	}
 
 	val1, err := g.Pop()
@@ -436,1894 +949,764 @@ func (g *Gorth) Rot() error {
 		return err
 	}
 
-	err = g.Push(val2)
-	if err != nil {
-		return err
-	}
-
-	err = g.Push(val1)
-	if err != nil {
-		return err
-	}
-
-	err = g.Push(val3)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (g *Gorth) Peek() (StackElement, error) {
-	if len(g.ExecStack) < 1 {
-		return StackElement{}, errors.New("ERROR: cannot PEEK_OP at an empty stack")
-	}
-	return g.ExecStack[len(g.ExecStack)-1], nil
-}
-
-func (g *Gorth) Print() error {
-	val, err := g.Peek()
-	if err != nil {
-		return err
-	}
-
-	switch val.Type {
-	case Int, String, Bool, Float:
-		fmt.Println(val.Value)
-	case Identifier:
-		// we use value since we set the value of variables on the element stack to the name of the variable
-		_, exists := g.VariableMap[val.Value.(string)]
-
-		if !exists {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val.Value.(string))
-		}
-
-		switch g.VariableMap[val.Value.(string)].Type {
-		case Int, String, Bool, Float:
-			fmt.Println(g.VariableMap[val.Value.(string)].Value)
-		}
-	default:
-		return errors.New("ERROR: top element is not a printable type")
-	}
-	return nil
-}
-
-func (g *Gorth) Add() error {
-	val1, err := g.Pop()
-	if err != nil {
-		return err
-	}
-	val2, err := g.Pop()
-	if err != nil {
-		return err
-	}
-	switch {
-	// integer addition
-	case val1.Type == Int && val2.Type == Int:
-		sum := val1.Value.(int) + val2.Value.(int)
-		g.Push(StackElement{Type: Int, Value: sum})
-	// string concatenation
-	case val1.Type == String && val2.Type == String:
-		// for string concatenation, we reverse the order of the strings
-		// since the first string to be popped is the second string and vice versa
-		concat := val1.Value.(string) + val2.Value.(string)
-		g.Push(StackElement{Type: String, Value: concat})
-	// float addition
-	case val1.Type == Float && val2.Type == Float:
-		sum := val1.Value.(float64) + val2.Value.(float64)
-		g.Push(StackElement{Type: Float, Value: sum})
-	// mixed type addition
-	case val1.Type == Int && val2.Type == Float:
-		sum := val2.Value.(float64) + float64(val1.Value.(int))
-		g.Push(StackElement{Type: Float, Value: sum})
-	case val1.Type == Float && val2.Type == Int:
-		sum := val1.Value.(float64) + float64(val2.Value.(int))
-		g.Push(StackElement{Type: Float, Value: sum})
-	// both variables
-	case val1.Type == Identifier && val2.Type == Identifier:
-		_, exists1 := g.VariableMap[val1.Value.(string)]
-		_, exists2 := g.VariableMap[val2.Value.(string)]
-
-		if !exists1 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val1.Value.(string))
-		}
-
-		if !exists2 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
-		}
-
-		switch {
-		case g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == Int:
-			sum := g.VariableMap[val1.Value.(string)].Value.(int) + g.VariableMap[val2.Value.(string)].Value.(int)
-			g.Push(StackElement{Type: Int, Value: sum})
-		case g.VariableMap[val1.Value.(string)].Type == Float && g.VariableMap[val2.Value.(string)].Type == Float:
-			sum := g.VariableMap[val1.Value.(string)].Value.(float64) + g.VariableMap[val2.Value.(string)].Value.(float64)
-			g.Push(StackElement{Type: Float, Value: sum})
-		case g.VariableMap[val1.Value.(string)].Type == String && g.VariableMap[val2.Value.(string)].Type == String:
-			concat := g.VariableMap[val1.Value.(string)].Value.(string) + g.VariableMap[val2.Value.(string)].Value.(string)
-			g.Push(StackElement{Type: String, Value: concat})
-		case g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == Float:
-			sum := float64(g.VariableMap[val1.Value.(string)].Value.(int)) + g.VariableMap[val2.Value.(string)].Value.(float64)
-			g.Push(StackElement{Type: Float, Value: sum})
-		case g.VariableMap[val1.Value.(string)].Type == Float && g.VariableMap[val2.Value.(string)].Type == Int:
-			sum := g.VariableMap[val1.Value.(string)].Value.(float64) + float64(g.VariableMap[val2.Value.(string)].Value.(int))
-			g.Push(StackElement{Type: Float, Value: sum})
-		default:
-			return errors.New("ERROR: cannot perform ADD_OP on different types")
-		}
-	// val1 is a variable and val2 is not
-	case val1.Type == Identifier && val2.Type != Identifier:
-		_, exists1 := g.VariableMap[val1.Value.(string)]
-
-		if !exists1 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val1.Value.(string))
-		}
-
-		switch {
-		case g.VariableMap[val1.Value.(string)].Type == Int && val2.Type == Int:
-			sum := g.VariableMap[val1.Value.(string)].Value.(int) + val2.Value.(int)
-			g.Push(StackElement{Type: Int, Value: sum})
-		case g.VariableMap[val1.Value.(string)].Type == Float && val2.Type == Float:
-			sum := g.VariableMap[val1.Value.(string)].Value.(float64) + val2.Value.(float64)
-			g.Push(StackElement{Type: Float, Value: sum})
-		case g.VariableMap[val1.Value.(string)].Type == String && val2.Type == String:
-			concat := g.VariableMap[val1.Value.(string)].Value.(string) + val2.Value.(string)
-			g.Push(StackElement{Type: String, Value: concat})
-		// one is an int and the other is a float
-		case g.VariableMap[val1.Value.(string)].Type == Int && val2.Type == Float:
-			sum := float64(g.VariableMap[val1.Value.(string)].Value.(int)) + val2.Value.(float64)
-			g.Push(StackElement{Type: Float, Value: sum})
-		case g.VariableMap[val1.Value.(string)].Type == Float && val2.Type == Int:
-			sum := g.VariableMap[val1.Value.(string)].Value.(float64) + float64(val2.Value.(int))
-			g.Push(StackElement{Type: Float, Value: sum})
-		default:
-			return errors.New("ERROR: cannot perform ADD_OP on different types")
-		}
-	// val2 is a variable and val1 is not
-	case val1.Type != Identifier && val2.Type == Identifier:
-		_, exists2 := g.VariableMap[val2.Value.(string)]
-
-		if !exists2 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
-		}
-
-		switch {
-		case g.VariableMap[val2.Value.(string)].Type == Int && val1.Type == Int:
-			sum := g.VariableMap[val2.Value.(string)].Value.(int) + val1.Value.(int)
-			g.Push(StackElement{Type: Int, Value: sum})
-		case g.VariableMap[val2.Value.(string)].Type == Float && val1.Type == Float:
-			sum := g.VariableMap[val2.Value.(string)].Value.(float64) + val1.Value.(float64)
-			g.Push(StackElement{Type: Float, Value: sum})
-		case g.VariableMap[val2.Value.(string)].Type == String && val1.Type == String:
-			concat := g.VariableMap[val2.Value.(string)].Value.(string) + val1.Value.(string)
-			g.Push(StackElement{Type: String, Value: concat})
-		// one is an int and the other is a float
-		case g.VariableMap[val2.Value.(string)].Type == Int && val1.Type == Float:
-			sum := float64(g.VariableMap[val2.Value.(string)].Value.(int)) + val1.Value.(float64)
-			g.Push(StackElement{Type: Float, Value: sum})
-		case g.VariableMap[val2.Value.(string)].Type == Float && val1.Type == Int:
-			sum := g.VariableMap[val2.Value.(string)].Value.(float64) + float64(val1.Value.(int))
-			g.Push(StackElement{Type: Float, Value: sum})
-		default:
-			return errors.New("ERROR: cannot perform ADD_OP on different types")
-		}
-	default:
-		return errors.New("ERROR: cannot perform ADD_OP on different types")
-	}
-	return nil
-}
-
-func (g *Gorth) Sub() error {
-	val1, err := g.Pop()
-	if err != nil {
-		return err
-	}
-	val2, err := g.Pop()
-	if err != nil {
-		return err
-	}
-	switch {
-	// integer subtraction
-	case val1.Type == Int && val2.Type == Int:
-		sub := val2.Value.(int) - val1.Value.(int)
-		g.Push(StackElement{Type: Int, Value: sub})
-	// float subtraction
-	case val1.Type == Float && val2.Type == Float:
-		sub := val2.Value.(float64) - val1.Value.(float64)
-		g.Push(StackElement{Type: Float, Value: sub})
-	// mixed number subtraction
-	case val1.Type == Int && val2.Type == Float:
-		sub := val2.Value.(float64) - float64(val1.Value.(int))
-		g.Push(StackElement{Type: Float, Value: sub})
-	case val1.Type == Float && val2.Type == Int:
-		sub := float64(val2.Value.(int)) - val1.Value.(float64)
-		g.Push(StackElement{Type: Float, Value: sub})
-	// variable subtraction
-	case val1.Type == Identifier && val2.Type == Identifier:
-		_, exists1 := g.VariableMap[val1.Value.(string)]
-		_, exists2 := g.VariableMap[val2.Value.(string)]
-
-		if !exists1 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val1.Value.(string))
-		}
-
-		if !exists2 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
-		}
-
-		switch {
-		case g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == Int:
-			sub := g.VariableMap[val2.Value.(string)].Value.(int) - g.VariableMap[val1.Value.(string)].Value.(int)
-			g.Push(StackElement{Type: Int, Value: sub})
-		case g.VariableMap[val1.Value.(string)].Type == Float && g.VariableMap[val2.Value.(string)].Type == Float:
-			sub := g.VariableMap[val2.Value.(string)].Value.(float64) - g.VariableMap[val1.Value.(string)].Value.(float64)
-			g.Push(StackElement{Type: Float, Value: sub})
-		case g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == Float:
-			sub := g.VariableMap[val2.Value.(string)].Value.(float64) - float64(g.VariableMap[val1.Value.(string)].Value.(int))
-			g.Push(StackElement{Type: Float, Value: sub})
-		case g.VariableMap[val1.Value.(string)].Type == Float && g.VariableMap[val2.Value.(string)].Type == Int:
-			sub := float64(g.VariableMap[val2.Value.(string)].Value.(int)) - g.VariableMap[val1.Value.(string)].Value.(float64)
-			g.Push(StackElement{Type: Float, Value: sub})
-		default:
-			return errors.New("ERROR: cannot perform SUB_OP on different types")
-		}
-	// val1 is a variable and val2 is not
-	case val1.Type == Identifier && val2.Type != Identifier:
-		_, exists1 := g.VariableMap[val1.Value.(string)]
-
-		if !exists1 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val1.Value.(string))
-		}
-
-		switch {
-		case g.VariableMap[val1.Value.(string)].Type == Int && val2.Type == Int:
-			sub := val2.Value.(int) - g.VariableMap[val1.Value.(string)].Value.(int)
-			g.Push(StackElement{Type: Int, Value: sub})
-		case g.VariableMap[val1.Value.(string)].Type == Float && val2.Type == Float:
-			sub := val2.Value.(float64) - g.VariableMap[val1.Value.(string)].Value.(float64)
-			g.Push(StackElement{Type: Float, Value: sub})
-		// one is an int and the other is a float
-		case g.VariableMap[val1.Value.(string)].Type == Int && val2.Type == Float:
-			sub := val2.Value.(float64) - float64(g.VariableMap[val1.Value.(string)].Value.(int))
-			g.Push(StackElement{Type: Float, Value: sub})
-		case g.VariableMap[val1.Value.(string)].Type == Float && val2.Type == Int:
-			sub := float64(val2.Value.(int)) - g.VariableMap[val1.Value.(string)].Value.(float64)
-			g.Push(StackElement{Type: Float, Value: sub})
-		default:
-			return errors.New("ERROR: cannot perform SUB_OP on different types")
-		}
-	// val2 is a variable and val1 is not
-	case val1.Type != Identifier && val2.Type == Identifier:
-		_, exists2 := g.VariableMap[val2.Value.(string)]
-
-		if !exists2 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
-		}
-
-		switch {
-		case g.VariableMap[val2.Value.(string)].Type == Int && val1.Type == Int:
-			sub := g.VariableMap[val2.Value.(string)].Value.(int) - val1.Value.(int)
-			g.Push(StackElement{Type: Int, Value: sub})
-		case g.VariableMap[val2.Value.(string)].Type == Float && val1.Type == Float:
-			sub := g.VariableMap[val2.Value.(string)].Value.(float64) - val1.Value.(float64)
-			g.Push(StackElement{Type: Float, Value: sub})
-		// one is an int and the other is a float
-		case g.VariableMap[val2.Value.(string)].Type == Int && val1.Type == Float:
-			sub := float64(g.VariableMap[val2.Value.(string)].Value.(int)) - val1.Value.(float64)
-			g.Push(StackElement{Type: Float, Value: sub})
-		case g.VariableMap[val2.Value.(string)].Type == Float && val1.Type == Int:
-			sub := g.VariableMap[val2.Value.(string)].Value.(float64) - float64(val1.Value.(int))
-			g.Push(StackElement{Type: Float, Value: sub})
-		default:
-			return errors.New("ERROR: cannot perform SUB_OP on different types")
-		}
-	default:
-		return errors.New("ERROR: cannot perform SUB_OP on different types")
-	}
-	return nil
-}
-
-func (g *Gorth) Mul() error {
-	val1, err := g.Pop()
-	if err != nil {
-		return err
-	}
-
-	val2, err := g.Pop()
-	if err != nil {
-		return err
-	}
-
-	switch {
-	// integer multiplication
-	case val1.Type == Int && val2.Type == Int:
-		mul := val1.Value.(int) * val2.Value.(int)
-		g.Push(StackElement{Type: Int, Value: mul})
-	// string multiplication
-	case val1.Type == String && val2.Type == Int:
-		str := val1.Value.(string)
-		num := val2.Value.(int)
-		var concat string
-		for i := 0; i < num; i++ {
-			concat += str
-		}
-		g.Push(StackElement{Type: String, Value: concat})
-	// string multiplication
-	case val1.Type == Int && val2.Type == String:
-		str := val2.Value.(string)
-		num := val1.Value.(int)
-		var concat string
-		for i := 0; i < num; i++ {
-			concat += str
-		}
-		g.Push(StackElement{Type: String, Value: concat})
-	// float multiplication
-	case val1.Type == Float && val2.Type == Float:
-		mul := val1.Value.(float64) * val2.Value.(float64)
-		g.Push(StackElement{Type: Float, Value: mul})
-	// one is float and the other is an int
-	case val1.Type == Int && val2.Type == Float:
-		mul := float64(val1.Value.(int)) * val2.Value.(float64)
-		g.Push(StackElement{Type: Float, Value: mul})
-	case val1.Type == Float && val2.Type == Int:
-		mul := val1.Value.(float64) * float64(val2.Value.(int))
-		g.Push(StackElement{Type: Float, Value: mul})
-	// variable multiplication
-	case val1.Type == Identifier && val2.Type == Identifier:
-		_, exists1 := g.VariableMap[val1.Value.(string)]
-		_, exists2 := g.VariableMap[val2.Value.(string)]
-
-		if !exists1 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val1.Value.(string))
-		}
-
-		if !exists2 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
-		}
-
-		switch {
-		case g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == Int:
-			mul := g.VariableMap[val1.Value.(string)].Value.(int) * g.VariableMap[val2.Value.(string)].Value.(int)
-			g.Push(StackElement{Type: Int, Value: mul})
-		case g.VariableMap[val1.Value.(string)].Type == Float && g.VariableMap[val2.Value.(string)].Type == Float:
-			mul := g.VariableMap[val1.Value.(string)].Value.(float64) * g.VariableMap[val2.Value.(string)].Value.(float64)
-			g.Push(StackElement{Type: Float, Value: mul})
-		case g.VariableMap[val1.Value.(string)].Type == String && g.VariableMap[val2.Value.(string)].Type == Int:
-			str := g.VariableMap[val1.Value.(string)].Value.(string)
-			num := g.VariableMap[val2.Value.(string)].Value.(int)
-			var concat string
-			for i := 0; i < num; i++ {
-				concat += str
-			}
-			g.Push(StackElement{Type: String, Value: concat})
-		case g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == String:
-			str := g.VariableMap[val2.Value.(string)].Value.(string)
-			num := g.VariableMap[val1.Value.(string)].Value.(int)
-			var concat string
-			for i := 0; i < num; i++ {
-				concat += str
-			}
-			g.Push(StackElement{Type: String, Value: concat})
-		// one is a float and one is an int
-		case g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == Float:
-			mul := float64(g.VariableMap[val1.Value.(string)].Value.(int)) * g.VariableMap[val2.Value.(string)].Value.(float64)
-			g.Push(StackElement{Type: Float, Value: mul})
-		case g.VariableMap[val1.Value.(string)].Type == Float && g.VariableMap[val2.Value.(string)].Type == Int:
-			mul := g.VariableMap[val1.Value.(string)].Value.(float64) * float64(g.VariableMap[val2.Value.(string)].Value.(int))
-			g.Push(StackElement{Type: Float, Value: mul})
-		default:
-			return errors.New("ERROR: cannot perform MUL_OP on different types")
-		}
-	// val1 is a variable and val2 is not
-	case val1.Type == Identifier && val2.Type != Identifier:
-		_, exists1 := g.VariableMap[val1.Value.(string)]
-
-		if !exists1 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val1.Value.(string))
-		}
-
-		switch {
-		case g.VariableMap[val1.Value.(string)].Type == Int && val2.Type == Int:
-			mul := g.VariableMap[val1.Value.(string)].Value.(int) * val2.Value.(int)
-			g.Push(StackElement{Type: Int, Value: mul})
-		case g.VariableMap[val1.Value.(string)].Type == Float && val2.Type == Float:
-			mul := g.VariableMap[val1.Value.(string)].Value.(float64) * val2.Value.(float64)
-			g.Push(StackElement{Type: Float, Value: mul})
-		case g.VariableMap[val1.Value.(string)].Type == String && val2.Type == Int:
-			str := g.VariableMap[val1.Value.(string)].Value.(string)
-			num := val2.Value.(int)
-			var concat string
-			for i := 0; i < num; i++ {
-				concat += str
-			}
-			g.Push(StackElement{Type: String, Value: concat})
-		case g.VariableMap[val1.Value.(string)].Type == Int && val2.Type == String:
-			str := val2.Value.(string)
-			num := g.VariableMap[val1.Value.(string)].Value.(int)
-			var concat string
-			for i := 0; i < num; i++ {
-				concat += str
-			}
-			g.Push(StackElement{Type: String, Value: concat})
-		// one is a float and one is an int
-		case g.VariableMap[val1.Value.(string)].Type == Int && val2.Type == Float:
-			mul := float64(g.VariableMap[val1.Value.(string)].Value.(int)) * val2.Value.(float64)
-			g.Push(StackElement{Type: Float, Value: mul})
-		case g.VariableMap[val1.Value.(string)].Type == Float && val2.Type == Int:
-			mul := g.VariableMap[val1.Value.(string)].Value.(float64) * float64(val2.Value.(int))
-			g.Push(StackElement{Type: Float, Value: mul})
-		default:
-			return errors.New("ERROR: cannot perform MUL_OP on different types")
-		}
-	// val2 is a variable and val1 is not
-	case val1.Type != Identifier && val2.Type == Identifier:
-		_, exists2 := g.VariableMap[val2.Value.(string)]
-
-		if !exists2 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
-		}
-
-		switch {
-		case g.VariableMap[val2.Value.(string)].Type == Int && val1.Type == Int:
-			mul := g.VariableMap[val2.Value.(string)].Value.(int) * val1.Value.(int)
-			g.Push(StackElement{Type: Int, Value: mul})
-		case g.VariableMap[val2.Value.(string)].Type == Float && val1.Type == Float:
-			mul := g.VariableMap[val2.Value.(string)].Value.(float64) * val1.Value.(float64)
-			g.Push(StackElement{Type: Float, Value: mul})
-		case g.VariableMap[val2.Value.(string)].Type == String && val1.Type == Int:
-			str := g.VariableMap[val2.Value.(string)].Value.(string)
-			num := val1.Value.(int)
-			var concat string
-			for i := 0; i < num; i++ {
-				concat += str
-			}
-			g.Push(StackElement{Type: String, Value: concat})
-		case g.VariableMap[val2.Value.(string)].Type == Int && val1.Type == String:
-			str := val1.Value.(string)
-			num := g.VariableMap[val2.Value.(string)].Value.(int)
-			var concat string
-			for i := 0; i < num; i++ {
-				concat += str
-			}
-			g.Push(StackElement{Type: String, Value: concat})
-		// one is a float and one is an int
-		case g.VariableMap[val2.Value.(string)].Type == Int && val1.Type == Float:
-			mul := float64(g.VariableMap[val2.Value.(string)].Value.(int)) * val1.Value.(float64)
-			g.Push(StackElement{Type: Float, Value: mul})
-		case g.VariableMap[val2.Value.(string)].Type == Float && val1.Type == Int:
-			mul := g.VariableMap[val2.Value.(string)].Value.(float64) * float64(val1.Value.(int))
-			g.Push(StackElement{Type: Float, Value: mul})
-		default:
-			return errors.New("ERROR: cannot perform MUL_OP on different types")
-		}
-	// mixed type multiplication
-	case (val1.Type == Int && val2.Type == Float) || (val1.Type == Float && val2.Type == Int):
-		mul := val2.Value.(float64) * float64(val1.Value.(int))
-		g.Push(StackElement{Type: Float, Value: mul})
-	default:
-		return errors.New("ERROR: cannot perform MUL_OP on different types")
-	}
-	return nil
-}
-
-func (g *Gorth) Div() error {
-	val1, err := g.Pop()
-	if err != nil {
-		return err
-	}
-	val2, err := g.Pop()
-	if err != nil {
-		return err
-	}
-	switch {
-	// integer division
-	case val1.Type == Int && val2.Type == Int:
-		div := val2.Value.(int) / val1.Value.(int)
-		g.Push(StackElement{Type: Int, Value: div})
-	// float division
-	case val1.Type == Float && val2.Type == Float:
-		div := val2.Value.(float64) / val1.Value.(float64)
-		g.Push(StackElement{Type: Float, Value: div})
-	// one is float and the other is an int
-	case val1.Type == Int && val2.Type == Float:
-		div := val2.Value.(float64) / float64(val1.Value.(int))
-		g.Push(StackElement{Type: Float, Value: div})
-	case val1.Type == Float && val2.Type == Int:
-		div := float64(val2.Value.(int)) / val1.Value.(float64)
-		g.Push(StackElement{Type: Float, Value: div})
-	// variables
-	case val1.Type == Identifier && val2.Type == Identifier:
-		_, exists1 := g.VariableMap[val1.Value.(string)]
-		_, exists2 := g.VariableMap[val2.Value.(string)]
-
-		if !exists1 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val1.Value.(string))
-		}
-
-		if !exists2 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
-		}
-
-		switch {
-		case g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == Int:
-			div := g.VariableMap[val2.Value.(string)].Value.(int) / g.VariableMap[val1.Value.(string)].Value.(int)
-			g.Push(StackElement{Type: Int, Value: div})
-		case g.VariableMap[val1.Value.(string)].Type == Float && g.VariableMap[val2.Value.(string)].Type == Float:
-			div := g.VariableMap[val2.Value.(string)].Value.(float64) / g.VariableMap[val1.Value.(string)].Value.(float64)
-			g.Push(StackElement{Type: Float, Value: div})
-		// one is an int and the other is a float
-		case g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == Float:
-			div := g.VariableMap[val2.Value.(string)].Value.(float64) / float64(g.VariableMap[val1.Value.(string)].Value.(int))
-			g.Push(StackElement{Type: Float, Value: div})
-		case g.VariableMap[val1.Value.(string)].Type == Float && g.VariableMap[val2.Value.(string)].Type == Int:
-			div := float64(g.VariableMap[val2.Value.(string)].Value.(int)) / g.VariableMap[val1.Value.(string)].Value.(float64)
-			g.Push(StackElement{Type: Float, Value: div})
-		default:
-			return errors.New("ERROR: cannot perform DIV_OP on different types")
-		}
-	// val1 is a variable and val2 is not
-	case val1.Type == Identifier && val2.Type != Identifier:
-		_, exists1 := g.VariableMap[val1.Value.(string)]
-		_, exists2 := g.VariableMap[val2.Value.(string)]
-
-		if !exists1 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val1.Value.(string))
-		}
-
-		if !exists2 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
-		}
-
-		switch {
-		case g.VariableMap[val1.Value.(string)].Type == Int && val2.Type == Int:
-			div := val2.Value.(int) / g.VariableMap[val1.Value.(string)].Value.(int)
-			g.Push(StackElement{Type: Int, Value: div})
-		case g.VariableMap[val1.Value.(string)].Type == Float && val2.Type == Float:
-			div := val2.Value.(float64) / g.VariableMap[val1.Value.(string)].Value.(float64)
-			g.Push(StackElement{Type: Float, Value: div})
-		// one is an int and the other is a float
-		case g.VariableMap[val1.Value.(string)].Type == Int && val2.Type == Float:
-			div := val2.Value.(float64) / float64(g.VariableMap[val1.Value.(string)].Value.(int))
-			g.Push(StackElement{Type: Float, Value: div})
-		case g.VariableMap[val1.Value.(string)].Type == Float && val2.Type == Int:
-			div := g.VariableMap[val1.Value.(string)].Value.(float64) / float64(val2.Value.(int))
-			g.Push(StackElement{Type: Float, Value: div})
-		default:
-			return errors.New("ERROR: cannot perform DIV_OP on different types")
-		}
-	// val2 is a variable and val1 is not
-	case val1.Type != Identifier && val2.Type == Identifier:
-		_, exists1 := g.VariableMap[val1.Value.(string)]
-		_, exists2 := g.VariableMap[val2.Value.(string)]
-
-		if !exists1 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val1.Value.(string))
-		}
-
-		if !exists2 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
-		}
-
-		switch {
-		case g.VariableMap[val2.Value.(string)].Type == Int && val1.Type == Int:
-			div := g.VariableMap[val2.Value.(string)].Value.(int) / val1.Value.(int)
-			g.Push(StackElement{Type: Int, Value: div})
-		case g.VariableMap[val2.Value.(string)].Type == Float && val1.Type == Float:
-			div := g.VariableMap[val2.Value.(string)].Value.(float64) / val1.Value.(float64)
-			g.Push(StackElement{Type: Float, Value: div})
-		case g.VariableMap[val2.Value.(string)].Type == Int && val1.Type == Float:
-			div := float64(g.VariableMap[val2.Value.(string)].Value.(int)) / val1.Value.(float64)
-			g.Push(StackElement{Type: Float, Value: div})
-		case g.VariableMap[val2.Value.(string)].Type == Float && val1.Type == Int:
-			div := g.VariableMap[val2.Value.(string)].Value.(float64) / float64(val1.Value.(int))
-			g.Push(StackElement{Type: Float, Value: div})
-		default:
-			return errors.New("ERROR: cannot perform DIV_OP on different types")
-		}
-	default:
-		return errors.New("ERROR: cannot perform DIV_OP on different types")
-	}
-	return nil
-}
-
-func (g *Gorth) Mod() error {
-	val1, err := g.Pop()
-	if err != nil {
-		return err
-	}
-	val2, err := g.Pop()
-	if err != nil {
-		return err
-	}
-	switch {
-	// integer modulo
-	case val1.Type == Int && val2.Type == Int:
-		if val1.Value.(int) == 0 {
-			return errors.New("ERROR: cannot divide by zero")
-		}
-		mod := val2.Value.(int) % val1.Value.(int)
-		g.Push(StackElement{Type: Int, Value: mod})
-	// variables
-	case val1.Type == Identifier && val2.Type == Identifier:
-		_, exists1 := g.VariableMap[val1.Value.(string)]
-		_, exists2 := g.VariableMap[val2.Value.(string)]
-
-		if !exists1 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val1.Value.(string))
-		}
-
-		if !exists2 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
-		}
-
-		switch {
-		case g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == Int:
-			if g.VariableMap[val1.Value.(string)].Value.(int) == 0 {
-				return errors.New("ERROR: cannot divide by zero")
-			}
-			mod := g.VariableMap[val2.Value.(string)].Value.(int) % g.VariableMap[val1.Value.(string)].Value.(int)
-			g.Push(StackElement{Type: Int, Value: mod})
-		default:
-			return errors.New("ERROR: cannot perform MOD_OP on different types")
-		}
-	// one is a variable and the other is not
-	case val1.Type == Identifier && val2.Type != Identifier:
-		_, exists1 := g.VariableMap[val1.Value.(string)]
-
-		if !exists1 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val1.Value.(string))
-		}
-
-		switch {
-		case g.VariableMap[val1.Value.(string)].Type == Int && val2.Type == Int:
-			if val1.Value.(int) == 0 {
-				return errors.New("ERROR: cannot divide by zero")
-			}
-			mod := val2.Value.(int) % g.VariableMap[val1.Value.(string)].Value.(int)
-			g.Push(StackElement{Type: Int, Value: mod})
-		default:
-			return errors.New("ERROR: cannot perform MOD_OP on different types")
-		}
-	default:
-		return errors.New("ERROR: cannot perform MOD_OP on different types")
-	}
-	return nil
-}
-
-func (g *Gorth) Exp() error {
-	val1, err := g.Pop()
-	if err != nil {
-		return err
-	}
-	val2, err := g.Pop()
-	if err != nil {
-		return err
-	}
-	switch {
-	// integer exponentiation
-	case val1.Type == Int && val2.Type == Int:
-		exp := int(math.Pow(float64(val2.Value.(int)), float64(val1.Value.(int))))
-		g.Push(StackElement{Type: Int, Value: exp})
-	// float exponentiation
-	case val1.Type == Float && val2.Type == Float:
-		exp := math.Pow(val2.Value.(float64), val1.Value.(float64))
-		g.Push(StackElement{Type: Float, Value: exp})
-	// mixed type exponentiation
-	case val1.Type == Int && val2.Type == Float:
-		exp := math.Pow(val2.Value.(float64), float64(val1.Value.(int)))
-		g.Push(StackElement{Type: Float, Value: exp})
-	case val1.Type == Float && val2.Type == Int:
-		exp := math.Pow(float64(val2.Value.(int)), val1.Value.(float64))
-		g.Push(StackElement{Type: Float, Value: exp})
-	// variables
-	case val1.Type == Identifier && val2.Type == Identifier:
-		_, exists1 := g.VariableMap[val1.Value.(string)]
-		_, exists2 := g.VariableMap[val2.Value.(string)]
-
-		if !exists1 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val1.Value.(string))
-		}
-
-		if !exists2 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
-		}
-
-		switch {
-		case g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == Int:
-			exp := int(math.Pow(float64(g.VariableMap[val2.Value.(string)].Value.(int)), float64(g.VariableMap[val1.Value.(string)].Value.(int))))
-			g.Push(StackElement{Type: Int, Value: exp})
-		case g.VariableMap[val1.Value.(string)].Type == Float && g.VariableMap[val2.Value.(string)].Type == Float:
-			exp := math.Pow(g.VariableMap[val2.Value.(string)].Value.(float64), g.VariableMap[val1.Value.(string)].Value.(float64))
-			g.Push(StackElement{Type: Float, Value: exp})
-		// one is an int and the other is a float
-		case g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == Float:
-			exp := math.Pow(float64(g.VariableMap[val2.Value.(string)].Value.(int)), g.VariableMap[val1.Value.(string)].Value.(float64))
-			g.Push(StackElement{Type: Float, Value: exp})
-		case g.VariableMap[val1.Value.(string)].Type == Float && g.VariableMap[val2.Value.(string)].Type == Int:
-			exp := math.Pow(g.VariableMap[val2.Value.(string)].Value.(float64), float64(g.VariableMap[val1.Value.(string)].Value.(int)))
-			g.Push(StackElement{Type: Float, Value: exp})
-		default:
-			return errors.New("ERROR: cannot perform EXP_OP on different types")
-		}
-	// val1 is a variable and val2 is not
-	case val1.Type == Identifier && val2.Type != Identifier:
-		_, exists1 := g.VariableMap[val1.Value.(string)]
-
-		if !exists1 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val1.Value.(string))
-		}
-
-		switch {
-		case g.VariableMap[val1.Value.(string)].Type == Int && val2.Type == Int:
-			exp := int(math.Pow(float64(val2.Value.(int)), float64(g.VariableMap[val1.Value.(string)].Value.(int))))
-			g.Push(StackElement{Type: Int, Value: exp})
-		case g.VariableMap[val1.Value.(string)].Type == Float && val2.Type == Float:
-			exp := math.Pow(val2.Value.(float64), g.VariableMap[val1.Value.(string)].Value.(float64))
-			g.Push(StackElement{Type: Float, Value: exp})
-		// one is an int and the other is a float
-		case g.VariableMap[val1.Value.(string)].Type == Int && val2.Type == Float:
-			exp := math.Pow(float64(val2.Value.(int)), g.VariableMap[val1.Value.(string)].Value.(float64))
-			g.Push(StackElement{Type: Float, Value: exp})
-		case g.VariableMap[val1.Value.(string)].Type == Float && val2.Type == Int:
-			exp := math.Pow(val2.Value.(float64), float64(g.VariableMap[val1.Value.(string)].Value.(int)))
-			g.Push(StackElement{Type: Float, Value: exp})
-		default:
-			return errors.New("ERROR: cannot perform EXP_OP on different types")
-		}
-	// val2 is a variable and val1 is not
-	case val1.Type != Identifier && val2.Type == Identifier:
-		_, exists2 := g.VariableMap[val2.Value.(string)]
-
-		if !exists2 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
-		}
-
-		switch {
-		case g.VariableMap[val2.Value.(string)].Type == Int && val1.Type == Int:
-			exp := int(math.Pow(float64(g.VariableMap[val2.Value.(string)].Value.(int)), float64(val1.Value.(int))))
-			g.Push(StackElement{Type: Int, Value: exp})
-		case g.VariableMap[val2.Value.(string)].Type == Float && val1.Type == Float:
-			exp := math.Pow(g.VariableMap[val2.Value.(string)].Value.(float64), val1.Value.(float64))
-			g.Push(StackElement{Type: Float, Value: exp})
-		// one is an int and the other is a float
-		case g.VariableMap[val2.Value.(string)].Type == Int && val1.Type == Float:
-			exp := math.Pow(float64(g.VariableMap[val2.Value.(string)].Value.(int)), val1.Value.(float64))
-			g.Push(StackElement{Type: Float, Value: exp})
-		case g.VariableMap[val2.Value.(string)].Type == Float && val1.Type == Int:
-			exp := math.Pow(g.VariableMap[val2.Value.(string)].Value.(float64), float64(val1.Value.(int)))
-			g.Push(StackElement{Type: Float, Value: exp})
-		default:
-			return errors.New("ERROR: cannot perform EXP_OP on different types")
-		}
-	default:
-		return errors.New("ERROR: cannot perform EXP_OP on different types")
-	}
-	return nil
-}
-
-func (g *Gorth) Inc() error {
-	val, err := g.Pop()
-	if err != nil {
-		return err
-	}
-	switch {
-	case val.Type == Int:
-		g.Push(StackElement{Type: Int, Value: val.Value.(int) + 1})
-	case val.Type == Float:
-		g.Push(StackElement{Type: Float, Value: val.Value.(float64) + 1})
-	// variable increment
-	case val.Type == Identifier:
-		_, exists := g.VariableMap[val.Value.(string)]
-
-		if !exists {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val.Value.(string))
-		}
-
-		switch {
-		case g.VariableMap[val.Value.(string)].Type == Int:
-			incVal := g.VariableMap[val.Value.(string)].Value.(int) + 1
-			temp := g.VariableMap[val.Value.(string)]
-			temp.Value = incVal
-			g.VariableMap[val.Value.(string)] = temp
-		case g.VariableMap[val.Value.(string)].Type == Float:
-			incVal := g.VariableMap[val.Value.(string)].Value.(float64) + 1
-			temp := g.VariableMap[val.Value.(string)]
-			temp.Value = incVal
-			g.VariableMap[val.Value.(string)] = temp
-		default:
-			return errors.New("ERROR: cannot perform INC_OP on different types")
-		}
-	default:
-		return errors.New("ERROR: cannot perform INC_OP on different types")
-	}
-	return nil
-}
-
-func (g *Gorth) Dec() error {
-	val, err := g.Pop()
-	if err != nil {
-		return err
-	}
-	switch {
-	case val.Type == Int:
-		g.Push(StackElement{Type: Int, Value: val.Value.(int) - 1})
-	case val.Type == Float:
-		g.Push(StackElement{Type: Float, Value: val.Value.(float64) - 1})
-	// variable decrement
-	case val.Type == Identifier:
-		_, exists := g.VariableMap[val.Value.(string)]
-
-		if !exists {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val.Value.(string))
-		}
-
-		switch {
-		case g.VariableMap[val.Value.(string)].Type == Int:
-			decVal := g.VariableMap[val.Value.(string)].Value.(int) - 1
-			temp := g.VariableMap[val.Value.(string)]
-			temp.Value = decVal
-			g.VariableMap[val.Value.(string)] = temp
-		case g.VariableMap[val.Value.(string)].Type == Float:
-			decVal := g.VariableMap[val.Value.(string)].Value.(float64) - 1
-			temp := g.VariableMap[val.Value.(string)]
-			temp.Value = decVal
-			g.VariableMap[val.Value.(string)] = temp
-		default:
-			return errors.New("ERROR: cannot perform DEC_OP on different types")
-		}
-	default:
-		return errors.New("ERROR: cannot perform DEC_OP on different types")
-	}
-	return nil
-}
-
-func (g *Gorth) Neg() error {
-	val, err := g.Pop()
-	if err != nil {
-		return err
-	}
-	switch {
-	case val.Type == Int:
-		g.Push(StackElement{Type: Int, Value: -val.Value.(int)})
-	case val.Type == Float:
-		g.Push(StackElement{Type: Float, Value: -val.Value.(float64)})
-	case val.Type == Bool:
-		g.Push(StackElement{Type: Bool, Value: !val.Value.(bool)})
-	// variable negation
-	case val.Type == Identifier:
-		_, exists := g.VariableMap[val.Value.(string)]
-
-		if !exists {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val.Value.(string))
-		}
-
-		switch g.VariableMap[val.Value.(string)].Type {
-		case Int:
-			negVal := -g.VariableMap[val.Value.(string)].Value.(int)
-			temp := g.VariableMap[val.Value.(string)]
-			temp.Value = negVal
-			g.VariableMap[val.Value.(string)] = temp
-		case Float:
-			negVal := -g.VariableMap[val.Value.(string)].Value.(float64)
-			temp := g.VariableMap[val.Value.(string)]
-			temp.Value = negVal
-			g.VariableMap[val.Value.(string)] = temp
-		case Bool:
-			negVal := !g.VariableMap[val.Value.(string)].Value.(bool)
-			temp := g.VariableMap[val.Value.(string)]
-			temp.Value = negVal
-			g.VariableMap[val.Value.(string)] = temp
-		default:
-			return errors.New("ERROR: cannot perform NEG_OP on different types")
-		}
-	default:
-		return errors.New("ERROR: cannot perform NEG_OP on different types")
-	}
-	return nil
-}
-
-func (g *Gorth) Swap() error {
-	val1, err := g.Pop()
-	if err != nil {
-		return err
-	}
-
-	val2, err := g.Pop()
-	if err != nil {
-		return err
-	}
-
-	g.Push(val1)
 	g.Push(val2)
+	g.Push(val1)
+	g.Push(val3)
+
 	return nil
 }
 
-func (g *Gorth) Dup() error {
-	val, err := g.Peek()
+func (g *Gorth) Delete() error {
+	if len(g.ExecutionStack) < 1 {
+		return errors.New("error: cannot delete with less than 1 element in the stack")
+	}
+
+	val, err := g.Pop()
 	if err != nil {
 		return err
 	}
-	g.Push(val)
+
+	if val.Type == VARIABLE {
+		if _, ok := g.SemanticAnalyser.SymbolTable.Variables[val.Value]; !ok {
+			return fmt.Errorf("error: variable %s is not defined", val.Value)
+		}
+
+		delete(g.SemanticAnalyser.SymbolTable.Variables, val.Value)
+	} else {
+		return errors.New("error: cannot delete non-variable element, consider using drop instead?")
+	}
+
 	return nil
 }
 
-func (g *Gorth) And() error {
-	// checks if the top two elements are both true
-	// only works if both elements are boolean
+func (g *Gorth) AssignVar() error {
+	if len(g.ExecutionStack) < 2 {
+		return fmt.Errorf("error: cannot assign variable with less than 2 elements in the stack")
+	}
+
+	// potential variable value or type
 	val1, err := g.Pop()
 	if err != nil {
 		return err
 	}
 
+	// means we have a type declaration
+	if _, ok := identifierMap[val1.Value]; ok && strings.Contains(PRIMITIVE_TYPES, val1.Value) {
+		// val3 becomes the actual variable value
+		val3, err := g.Pop()
+		if err != nil {
+			return err
+		}
+
+		// val4 becomes the variable name
+		val4, err := g.Pop()
+		if err != nil {
+			return err
+		}
+
+		// check if the variable name is using a reserved keyword
+		if _, ok := identifierMap[val4.Value]; ok {
+			return fmt.Errorf("error: %v is a reserved keyword", val4.Value)
+		}
+
+		// check if the variable is already defined
+		if _, ok := (g.SemanticAnalyser.SymbolTable.Variables)[strings.ToLower(val3.Value)]; ok && (g.SemanticAnalyser.SymbolTable.Variables)[val3.Value].Const {
+			return fmt.Errorf("error: variable %s is already defined", val3.Value)
+		}
+
+		// always make strings lowercase in the variable map
+		// in this language, variables will be case insensitive
+		(g.SemanticAnalyser.SymbolTable.Variables)[strings.ToLower(val4.Value)] = Variable{Name: val4.Value, Value: val3, Const: false, Type: identifierMap[val1.Value]}
+
+		// TODO: DO NOT PUSH DECLARED VARIABLES ONTO THE STACK, THEY WILL BE CONSUMED SO YOU HAVE TO ADD THEM WHEN YOU WANT TO USE THEM
+		// push the variable value to the stack
+		// g.Push(StackElement{Type: VARIABLE, Value: val3.Value, Position: val3.Position})
+
+		return nil
+	}
+
+	// variable name
 	val2, err := g.Pop()
 	if err != nil {
 		return err
 	}
 
-	switch {
-	case val1.Type == Bool && val2.Type == Bool:
-		g.Push(StackElement{Type: Bool, Value: val1.Value.(bool) && val2.Value.(bool)})
-	// using variables
-	case val1.Type == Identifier && val2.Type == Identifier:
-		_, exists1 := g.VariableMap[val1.Value.(string)]
-		_, exists2 := g.VariableMap[val2.Value.(string)]
-
-		if !exists1 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val1.Value.(string))
-		}
-
-		if !exists2 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
-		}
-
-		switch {
-		case g.VariableMap[val1.Value.(string)].Type == Bool && g.VariableMap[val2.Value.(string)].Type == Bool:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val1.Value.(string)].Value.(bool) && g.VariableMap[val2.Value.(string)].Value.(bool)})
-		default:
-			return errors.New("ERROR: cannot perform AND_OP on non boolean types")
-		}
-	// val1 is a variable and val2 is not
-	case val1.Type == Identifier && val2.Type != Identifier:
-		_, exists1 := g.VariableMap[val1.Value.(string)]
-
-		if !exists1 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val1.Value.(string))
-		}
-
-		switch g.VariableMap[val1.Value.(string)].Type {
-		case Bool:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val1.Value.(string)].Value.(bool) && val2.Value.(bool)})
-		default:
-			return errors.New("ERROR: cannot perform AND_OP on non boolean types")
-		}
-	// val2 is a variable and val1 is not
-	case val1.Type != Identifier && val2.Type == Identifier:
-		_, exists2 := g.VariableMap[val2.Value.(string)]
-
-		if !exists2 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
-		}
-
-		switch g.VariableMap[val2.Value.(string)].Type {
-		case Bool:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(bool) && val1.Value.(bool)})
-		default:
-			return errors.New("ERROR: cannot perform AND_OP on non boolean types")
-		}
-	default:
-		return errors.New("ERROR: cannot perform AND_OP on non boolean types")
+	// check if the variable name is using a reserved keyword
+	if _, ok := identifierMap[val2.Value]; ok {
+		return fmt.Errorf("error: %v is a reserved keyword", val2.Value)
 	}
+
+	// check if the variable is already defined
+	if _, ok := (g.SemanticAnalyser.SymbolTable.Variables)[strings.ToLower(val2.Value)]; ok && (g.SemanticAnalyser.SymbolTable.Variables)[val2.Value].Const {
+		return fmt.Errorf("error: variable %s is already defined", val2.Value)
+	}
+
+	// always make strings lowercase in the variable map
+	// in this language, variables will be case insensitive
+	(*&g.SemanticAnalyser.SymbolTable.Variables)[strings.ToLower(val2.Value)] = Variable{Name: val2.Value, Value: val1, Const: false, Type: g.SemanticAnalyser.InferType(val1.Value)}
+
+	// TODO: DO NOT PUSH DECLARED VARIABLES ONTO THE STACK, THEY WILL BE CONSUMED SO YOU HAVE TO ADD THEM WHEN YOU WANT TO USE THEM
+	// push the variable value to the stack
+	// g.Push(StackElement{Type: VARIABLE, Value: val1.Value, Position: val2.Position})
 
 	return nil
 }
 
-func (g *Gorth) Or() error {
-	val1, err := g.Pop()
-	if err != nil {
-		return err
-	}
-
-	val2, err := g.Pop()
-	if err != nil {
-		return err
-	}
-
-	// check types
-	if val1.Type != Bool && val1.Type != Identifier || val2.Type != Bool && val2.Type != Identifier {
-		return errors.New("ERROR: cannot perform OR_OP on non boolean types")
-	}
-
-	switch {
-	case val1.Type == Bool && val2.Type == Bool:
-		g.Push(StackElement{Type: Bool, Value: val1.Value.(bool) || val2.Value.(bool)})
-	// using variables
-	case val1.Type == Identifier && val2.Type == Identifier:
-		_, exists1 := g.VariableMap[val1.Value.(string)]
-		_, exists2 := g.VariableMap[val2.Value.(string)]
-
-		if !exists1 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val1.Value.(string))
-		}
-
-		if !exists2 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
-		}
-
-		switch {
-		case g.VariableMap[val1.Value.(string)].Type == Bool && g.VariableMap[val2.Value.(string)].Type == Bool:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val1.Value.(string)].Value.(bool) || g.VariableMap[val2.Value.(string)].Value.(bool)})
-		default:
-			return errors.New("ERROR: cannot perform OR_OP on non boolean types")
-		}
-	// val1 is a variable and val2 is not
-	case val1.Type == Identifier && val2.Type != Identifier:
-		_, exists1 := g.VariableMap[val1.Value.(string)]
-
-		if !exists1 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val1.Value.(string))
-		}
-
-		if val2.Type != Bool {
-			return errors.New("ERROR: cannot perform OR_OP on non boolean types")
-		}
-
-		switch g.VariableMap[val1.Value.(string)].Type {
-		case Bool:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val1.Value.(string)].Value.(bool) || val2.Value.(bool)})
-		default:
-			return errors.New("ERROR: cannot perform OR_OP on non boolean types")
-		}
-	// val2 is a variable and val1 is not
-	case val1.Type != Identifier && val2.Type == Identifier:
-		_, exists2 := g.VariableMap[val2.Value.(string)]
-
-		if !exists2 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
-		}
-
-		if val1.Type != Bool {
-			return errors.New("ERROR: cannot perform OR_OP on non boolean types")
-		}
-
-		switch g.VariableMap[val2.Value.(string)].Type {
-		case Bool:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(bool) || val1.Value.(bool)})
-		default:
-			return errors.New("ERROR: cannot perform OR_OP on non boolean types")
-		}
-	default:
-		return errors.New("ERROR: cannot perform OR_OP on non boolean types")
-	}
-
-	return nil
-}
-
-func (g *Gorth) Not() error {
-	// flips the top of the stack
-	val1, err := g.Pop()
-	if err != nil {
-		return err
-	}
-
-	switch {
-	case val1.Type == Bool && val1.Value.(bool):
-		g.Push(StackElement{Type: Bool, Value: false})
-	case val1.Type == Bool && !val1.Value.(bool):
-		g.Push(StackElement{Type: Bool, Value: true})
-	case val1.Type == Int && val1.Value.(int) != 0:
-		g.Push(StackElement{Type: Int, Value: val1.Value.(int) * -1})
-	case val1.Type == Int && val1.Value.(int) == 0:
-		g.Push(StackElement{Type: Int, Value: 0})
-	case val1.Type == Float && val1.Value.(float64) != 0:
-		g.Push(StackElement{Type: Float, Value: val1.Value.(float64) * -1})
-	case val1.Type == Float && val1.Value.(float64) == 0:
-		g.Push(StackElement{Type: Float, Value: 0.0})
-	// variable negation
-	case val1.Type == Identifier:
-		_, exists := g.VariableMap[val1.Value.(string)]
-
-		if !exists {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val1.Value.(string))
-		}
-
-		switch g.VariableMap[val1.Value.(string)].Type {
-		case Bool:
-			negVal := !g.VariableMap[val1.Value.(string)].Value.(bool)
-			temp := g.VariableMap[val1.Value.(string)]
-			temp.Value = negVal
-			g.VariableMap[val1.Value.(string)] = temp
-		case Int:
-			negVal := g.VariableMap[val1.Value.(string)].Value.(int) * -1
-			temp := g.VariableMap[val1.Value.(string)]
-			temp.Value = negVal
-			g.VariableMap[val1.Value.(string)] = temp
-		case Float:
-			negVal := g.VariableMap[val1.Value.(string)].Value.(float64) * -1
-			temp := g.VariableMap[val1.Value.(string)]
-			temp.Value = negVal
-			g.VariableMap[val1.Value.(string)] = temp
-		default:
-			return errors.New("ERROR: cannot perform NOT_OP on non boolean types")
-		}
-
-		// push the variable back onto the stack
-		// we only do this if the value on the stack is a variable
-		g.Push(val1)
-	default:
-		return errors.New("ERROR: cannot perform NOT_OP on non boolean types")
-	}
-
-	return nil
-}
-
-func (g *Gorth) Equal() error {
-	// checks if the top elements are equal
-	// equality checking is independent of type
-	// maybe bad language design lol
-	val1, err := g.Pop()
-	if err != nil {
-		return err
-	}
-
-	val2, err := g.Pop()
-	if err != nil {
-		return err
-	}
-
-	switch {
-	case val1.Type == Int && val2.Type == Int && val1.Type != Identifier && val2.Type != Identifier:
-		g.Push(StackElement{Type: Bool, Value: val1.Value == val2.Value})
-	case val1.Type == Float && val2.Type == Float && val1.Type != Identifier && val2.Type != Identifier:
-		g.Push(StackElement{Type: Bool, Value: val1.Value == val2.Value})
-	case val1.Type == Int && val2.Type == Float && val1.Type != Identifier && val2.Type != Identifier:
-		g.Push(StackElement{Type: Bool, Value: float64(val1.Value.(int)) == val2.Value.(float64)})
-	case val1.Type == Float && val2.Type == Int && val1.Type != Identifier && val2.Type != Identifier:
-		g.Push(StackElement{Type: Bool, Value: val1.Value.(float64) == float64(val2.Value.(int))})
-	case val1.Type == String && val2.Type == String && val1.Type != Identifier && val2.Type != Identifier:
-		g.Push(StackElement{Type: Bool, Value: val1.Value == val2.Value})
-	case val1.Type == Bool && val2.Type == Bool && val1.Type != Identifier && val2.Type != Identifier:
-		g.Push(StackElement{Type: Bool, Value: val1.Value == val2.Value})
-	case val1.Type == Identifier && val2.Type == Identifier:
-		_, exists1 := g.VariableMap[val1.Value.(string)]
-		_, exists2 := g.VariableMap[val2.Value.(string)]
-
-		if !exists1 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val1.Value.(string))
-		}
-
-		if !exists2 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
-		}
-
-		switch {
-		case g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == Int:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val1.Value.(string)].Value.(int) == g.VariableMap[val2.Value.(string)].Value.(int)})
-		case g.VariableMap[val1.Value.(string)].Type == Float && g.VariableMap[val2.Value.(string)].Type == Float:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val1.Value.(string)].Value.(float64) == g.VariableMap[val2.Value.(string)].Value.(float64)})
-		case g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == Float:
-			g.Push(StackElement{Type: Bool, Value: float64(g.VariableMap[val1.Value.(string)].Value.(int)) == g.VariableMap[val2.Value.(string)].Value.(float64)})
-		case g.VariableMap[val1.Value.(string)].Type == Float && g.VariableMap[val2.Value.(string)].Type == Int:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val1.Value.(string)].Value.(float64) == float64(g.VariableMap[val2.Value.(string)].Value.(int))})
-		case g.VariableMap[val1.Value.(string)].Type == String && g.VariableMap[val2.Value.(string)].Type == String:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val1.Value.(string)].Value.(string) == g.VariableMap[val2.Value.(string)].Value.(string)})
-		case g.VariableMap[val1.Value.(string)].Type == Bool && g.VariableMap[val2.Value.(string)].Type == Bool:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val1.Value.(string)].Value.(bool) == g.VariableMap[val2.Value.(string)].Value.(bool)})
-		default:
-			g.Push(StackElement{Type: Bool, Value: false})
-		}
-	// val1 is a variable and val2 is not
-	case val1.Type == Identifier && val2.Type != Identifier:
-		_, exists1 := g.VariableMap[val1.Value.(string)]
-
-		if !exists1 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val1.Value.(string))
-		}
-
-		switch {
-		case g.VariableMap[val1.Value.(string)].Type == Int && val2.Type == Int:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val1.Value.(string)].Value.(int) == val2.Value.(int)})
-		case g.VariableMap[val1.Value.(string)].Type == Float && val2.Type == Float:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val1.Value.(string)].Value.(float64) == val2.Value.(float64)})
-		case g.VariableMap[val1.Value.(string)].Type == Int && val2.Type == Float:
-			g.Push(StackElement{Type: Bool, Value: float64(g.VariableMap[val1.Value.(string)].Value.(int)) == val2.Value.(float64)})
-		case g.VariableMap[val1.Value.(string)].Type == Float && val2.Type == Int:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val1.Value.(string)].Value.(float64) == float64(val2.Value.(int))})
-		case g.VariableMap[val1.Value.(string)].Type == String && val2.Type == String:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val1.Value.(string)].Value.(string) == val2.Value.(string)})
-		case g.VariableMap[val1.Value.(string)].Type == Bool && val2.Type == Bool:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val1.Value.(string)].Value.(bool) == val2.Value.(bool)})
-		default:
-			g.Push(StackElement{Type: Bool, Value: false})
-		}
-	// val2 is a variable and val1 is not
-	case val1.Type != Identifier && val2.Type == Identifier:
-		_, exists2 := g.VariableMap[val2.Value.(string)]
-
-		if !exists2 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
-		}
-
-		switch {
-		case g.VariableMap[val2.Value.(string)].Type == Int && val1.Type == Int:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(int) == val1.Value.(int)})
-		case g.VariableMap[val2.Value.(string)].Type == Float && val1.Type == Float:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(float64) == val1.Value.(float64)})
-		case g.VariableMap[val2.Value.(string)].Type == Int && val1.Type == Float:
-			g.Push(StackElement{Type: Bool, Value: float64(g.VariableMap[val2.Value.(string)].Value.(int)) == val1.Value.(float64)})
-		case g.VariableMap[val2.Value.(string)].Type == Float && val1.Type == Int:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(float64) == float64(val1.Value.(int))})
-		case g.VariableMap[val2.Value.(string)].Type == String && val1.Type == String:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(string) == val1.Value.(string)})
-		case g.VariableMap[val2.Value.(string)].Type == Bool && val1.Type == Bool:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(bool) == val1.Value.(bool)})
-		default:
-			g.Push(StackElement{Type: Bool, Value: false})
-		}
-	default:
-		g.Push(StackElement{Type: Bool, Value: false})
-	}
-	return nil
-}
-
-func (g *Gorth) NotEqual() {
-	// checks if the top elements are not equal
-	// equality checking is independent of type
-	// maybe bad language design lol
-	g.Equal()
-	g.Not()
-}
-
-func (g *Gorth) EqualType() error {
-	// checks if the top elements are equal
-	// equality checking is dependent on type
-	// maybe bad language design lol
-	val1, err := g.Pop()
-	if err != nil {
-		return err
-	}
-
-	val2, err := g.Pop()
-	if err != nil {
-		return err
-	}
-
-	switch {
-	case val1.Type == val2.Type && val1.Type != Identifier && val2.Type != Identifier:
-		g.Push(StackElement{Type: Bool, Value: true})
-	case val1.Type == Identifier && val2.Type == Identifier:
-		_, exists1 := g.VariableMap[val1.Value.(string)]
-		_, exists2 := g.VariableMap[val2.Value.(string)]
-
-		if !exists1 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val1.Value.(string))
-		}
-
-		if !exists2 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
-		}
-
-		g.Push(StackElement{Type: Bool, Value: g.VariableMap[val1.Value.(string)].Type == g.VariableMap[val2.Value.(string)].Type})
-	// val1 is a variable and val2 is not
-	case val1.Type == Identifier && val2.Type != Identifier:
-		_, exists1 := g.VariableMap[val1.Value.(string)]
-
-		if !exists1 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val1.Value.(string))
-		}
-
-		g.Push(StackElement{Type: Bool, Value: g.VariableMap[val1.Value.(string)].Type == val2.Type})
-	// val2 is a variable and val1 is not
-	case val1.Type != Identifier && val2.Type == Identifier:
-		_, exists2 := g.VariableMap[val2.Value.(string)]
-
-		if !exists2 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
-		}
-
-		g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Type == val1.Type})
-	default:
-		g.Push(StackElement{Type: Bool, Value: false})
-	}
-
-	return nil
-}
-
-func (g *Gorth) GreaterThan() error {
-	val1, err := g.Pop()
-	if err != nil {
-		return err
-	}
-
-	val2, err := g.Pop()
-	if err != nil {
-		return err
-	}
-
-	switch {
-	case val1.Type == Int && val2.Type == Int:
-		g.Push(StackElement{Type: Bool, Value: val2.Value.(int) > val1.Value.(int)}) // Comparing val2 to val1
-	case val1.Type == Float && val2.Type == Float:
-		g.Push(StackElement{Type: Bool, Value: val2.Value.(float64) > val1.Value.(float64)}) // Comparing val2 to val1
-	case val1.Type == Int && val2.Type == Float:
-		g.Push(StackElement{Type: Bool, Value: val2.Value.(float64) > float64(val1.Value.(int))}) // Comparing val2 to val1
-	case val1.Type == Float && val2.Type == Int:
-		g.Push(StackElement{Type: Bool, Value: float64(val2.Value.(int)) > val1.Value.(float64)}) // Comparing val2 to val1
-	// using variables
-	case val1.Type == Identifier && val2.Type == Identifier:
-		_, exists1 := g.VariableMap[val1.Value.(string)]
-		_, exists2 := g.VariableMap[val2.Value.(string)]
-
-		if !exists1 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val1.Value.(string))
-		}
-
-		if !exists2 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
-		}
-
-		switch {
-		case g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == Int:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(int) > g.VariableMap[val1.Value.(string)].Value.(int)})
-		case g.VariableMap[val1.Value.(string)].Type == Float && g.VariableMap[val2.Value.(string)].Type == Float:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(float64) > g.VariableMap[val1.Value.(string)].Value.(float64)})
-		case g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == Float:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(float64) > float64(g.VariableMap[val1.Value.(string)].Value.(int))})
-		case g.VariableMap[val1.Value.(string)].Type == Float && g.VariableMap[val2.Value.(string)].Type == Int:
-			g.Push(StackElement{Type: Bool, Value: float64(g.VariableMap[val2.Value.(string)].Value.(int)) > g.VariableMap[val1.Value.(string)].Value.(float64)})
-		default:
-			return errors.New("ERROR: cannot perform GT_THAN_OP on different types")
-		}
-	// val1 is a variable and val2 is not
-	case val1.Type == Identifier && val2.Type != Identifier:
-		_, exists1 := g.VariableMap[val1.Value.(string)]
-
-		if !exists1 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val1.Value.(string))
-		}
-
-		switch {
-		case g.VariableMap[val1.Value.(string)].Type == Int && val2.Type == Int:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val1.Value.(string)].Value.(int) > val2.Value.(int)})
-		case g.VariableMap[val1.Value.(string)].Type == Float && val2.Type == Float:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val1.Value.(string)].Value.(float64) > val2.Value.(float64)})
-		case g.VariableMap[val1.Value.(string)].Type == Int && val2.Type == Float:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val1.Value.(string)].Value.(float64) > float64(val2.Value.(int))})
-		case g.VariableMap[val1.Value.(string)].Type == Float && val2.Type == Int:
-			g.Push(StackElement{Type: Bool, Value: float64(g.VariableMap[val1.Value.(string)].Value.(int)) > val2.Value.(float64)})
-		default:
-			return errors.New("ERROR: cannot perform GT_THAN_OP on different types")
-		}
-	// val2 is a variable and val1 is not
-	case val1.Type != Identifier && val2.Type == Identifier:
-		_, exists2 := g.VariableMap[val2.Value.(string)]
-
-		if !exists2 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
-		}
-
-		switch {
-		case g.VariableMap[val2.Value.(string)].Type == Int && val1.Type == Int:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(int) > val1.Value.(int)})
-		case g.VariableMap[val2.Value.(string)].Type == Float && val1.Type == Float:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(float64) > val1.Value.(float64)})
-		case g.VariableMap[val2.Value.(string)].Type == Int && val1.Type == Float:
-			g.Push(StackElement{Type: Bool, Value: float64(g.VariableMap[val2.Value.(string)].Value.(int)) > val1.Value.(float64)})
-		case g.VariableMap[val2.Value.(string)].Type == Float && val1.Type == Int:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(float64) > float64(val1.Value.(int))})
-		default:
-			return errors.New("ERROR: cannot perform GT_THAN_OP on different types")
-		}
-	default:
-		return errors.New("ERROR: cannot perform GT_THAN_OP on different types")
-	}
-	return nil
-}
-
-func (g *Gorth) LessThan() error {
-	val1, err := g.Pop()
-	if err != nil {
-		return err
-	}
-
-	val2, err := g.Pop()
-	if err != nil {
-		return err
-	}
-
-	switch {
-	case val1.Type == Int && val2.Type == Int && val1.Type != Identifier && val2.Type != Identifier:
-		g.Push(StackElement{Type: Bool, Value: val2.Value.(int) < val1.Value.(int)})
-	case val1.Type == Float && val2.Type == Float && val1.Type != Identifier && val2.Type != Identifier:
-		g.Push(StackElement{Type: Bool, Value: val2.Value.(float64) < val1.Value.(float64)})
-	case val1.Type == Int && val2.Type == Float && val1.Type != Identifier && val2.Type != Identifier:
-		g.Push(StackElement{Type: Bool, Value: val2.Value.(float64) < float64(val1.Value.(int))})
-	case val1.Type == Float && val2.Type == Int && val1.Type != Identifier && val2.Type != Identifier:
-		g.Push(StackElement{Type: Bool, Value: float64(val2.Value.(int)) < val1.Value.(float64)})
-	// using variables
-	case val1.Type == Identifier && val2.Type == Identifier:
-		_, exists1 := g.VariableMap[val1.Value.(string)]
-		_, exists2 := g.VariableMap[val2.Value.(string)]
-
-		if !exists1 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val1.Value.(string))
-		}
-
-		if !exists2 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
-		}
-
-		switch {
-		case g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == Int:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(int) < g.VariableMap[val1.Value.(string)].Value.(int)})
-		case g.VariableMap[val1.Value.(string)].Type == Float && g.VariableMap[val2.Value.(string)].Type == Float:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(float64) < g.VariableMap[val1.Value.(string)].Value.(float64)})
-		case g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == Float:
-			g.Push(StackElement{Type: Bool, Value: float64(g.VariableMap[val2.Value.(string)].Value.(int)) < g.VariableMap[val1.Value.(string)].Value.(float64)})
-		case g.VariableMap[val1.Value.(string)].Type == Float && g.VariableMap[val2.Value.(string)].Type == Int:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(float64) < float64(g.VariableMap[val1.Value.(string)].Value.(int))})
-		default:
-			return errors.New("ERROR: cannot perform LS_THAN_OP on different types")
-		}
-	// val1 is a variable and val2 is not
-	case val1.Type == Identifier && val2.Type != Identifier:
-		_, exists1 := g.VariableMap[val1.Value.(string)]
-
-		if !exists1 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val1.Value.(string))
-		}
-
-		switch {
-		case g.VariableMap[val1.Value.(string)].Type == Int && val2.Type == Int:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val1.Value.(string)].Value.(int) < val2.Value.(int)})
-		case g.VariableMap[val1.Value.(string)].Type == Float && val2.Type == Float:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val1.Value.(string)].Value.(float64) < val2.Value.(float64)})
-		case g.VariableMap[val1.Value.(string)].Type == Int && val2.Type == Float:
-			g.Push(StackElement{Type: Bool, Value: float64(g.VariableMap[val1.Value.(string)].Value.(int)) < val2.Value.(float64)})
-		case g.VariableMap[val1.Value.(string)].Type == Float && val2.Type == Int:
-			g.Push(StackElement{Type: Bool, Value: float64(g.VariableMap[val1.Value.(string)].Value.(int)) < val2.Value.(float64)})
-		default:
-			return errors.New("ERROR: cannot perform LS_THAN_OP on different types")
-		}
-	// val2 is a variable and val1 is not
-	case val1.Type != Identifier && val2.Type == Identifier:
-		_, exists2 := g.VariableMap[val2.Value.(string)]
-
-		if !exists2 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
-		}
-
-		switch {
-		case g.VariableMap[val2.Value.(string)].Type == Int && val1.Type == Int:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(int) < val1.Value.(int)})
-		case g.VariableMap[val2.Value.(string)].Type == Float && val1.Type == Float:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(float64) < val1.Value.(float64)})
-		case g.VariableMap[val2.Value.(string)].Type == Int && val1.Type == Float:
-			g.Push(StackElement{Type: Bool, Value: float64(g.VariableMap[val2.Value.(string)].Value.(int)) < val1.Value.(float64)})
-		case g.VariableMap[val2.Value.(string)].Type == Float && val1.Type == Int:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(float64) < val1.Value.(float64)})
-		default:
-			return errors.New("ERROR: cannot perform LS_THAN_OP on different types")
-		}
-	default:
-		return errors.New("ERROR: cannot perform LS_THAN_OP on different types")
-	}
-	return nil
-}
-
-func (g *Gorth) GreaterThanEqual() error {
-	val1, err := g.Pop()
-	if err != nil {
-		return err
-	}
-
-	val2, err := g.Pop()
-	if err != nil {
-		return err
-	}
-
-	switch {
-	case val1.Type == Int && val2.Type == Int:
-		g.Push(StackElement{Type: Bool, Value: val2.Value.(int) >= val1.Value.(int)})
-	case val1.Type == Float && val2.Type == Float:
-		g.Push(StackElement{Type: Bool, Value: val2.Value.(float64) >= val1.Value.(float64)})
-	case val1.Type == Int && val2.Type == Float:
-		g.Push(StackElement{Type: Bool, Value: val2.Value.(float64) >= float64(val1.Value.(int))})
-	case val1.Type == Float && val2.Type == Int:
-		g.Push(StackElement{Type: Bool, Value: float64(val2.Value.(int)) >= val1.Value.(float64)})
-	// using variables
-	case val1.Type == Identifier && val2.Type == Identifier:
-		_, exists1 := g.VariableMap[val1.Value.(string)]
-		_, exists2 := g.VariableMap[val2.Value.(string)]
-
-		if !exists1 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val1.Value.(string))
-		}
-
-		if !exists2 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
-		}
-
-		switch {
-		case g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == Int:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(int) >= g.VariableMap[val1.Value.(string)].Value.(int)})
-		case g.VariableMap[val1.Value.(string)].Type == Float && g.VariableMap[val2.Value.(string)].Type == Float:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(float64) >= g.VariableMap[val1.Value.(string)].Value.(float64)})
-		case g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == Float:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(float64) >= float64(g.VariableMap[val1.Value.(string)].Value.(int))})
-		case g.VariableMap[val1.Value.(string)].Type == Float && g.VariableMap[val2.Value.(string)].Type == Int:
-			g.Push(StackElement{Type: Bool, Value: float64(g.VariableMap[val2.Value.(string)].Value.(int)) >= g.VariableMap[val1.Value.(string)].Value.(float64)})
-		default:
-			return errors.New("ERROR: cannot perform GT_THAN_EQ_OP on different types")
-		}
-	// val1 is a variable and val2 is not
-	case val1.Type == Identifier && val2.Type != Identifier:
-		_, exists1 := g.VariableMap[val1.Value.(string)]
-
-		if !exists1 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val1.Value.(string))
-		}
-
-		switch {
-		case g.VariableMap[val1.Value.(string)].Type == Int && val2.Type == Int:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val1.Value.(string)].Value.(int) >= val2.Value.(int)})
-		case g.VariableMap[val1.Value.(string)].Type == Float && val2.Type == Float:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val1.Value.(string)].Value.(float64) >= val2.Value.(float64)})
-		case g.VariableMap[val1.Value.(string)].Type == Int && val2.Type == Float:
-			g.Push(StackElement{Type: Bool, Value: float64(g.VariableMap[val1.Value.(string)].Value.(int)) >= val2.Value.(float64)})
-		case g.VariableMap[val1.Value.(string)].Type == Float && val2.Type == Int:
-			g.Push(StackElement{Type: Bool, Value: float64(g.VariableMap[val1.Value.(string)].Value.(int)) >= val2.Value.(float64)})
-		default:
-			return errors.New("ERROR: cannot perform GT_THAN_EQ_OP on different types")
-		}
-	// val2 is a variable and val1 is not
-	case val1.Type != Identifier && val2.Type == Identifier:
-		_, exists2 := g.VariableMap[val2.Value.(string)]
-
-		if !exists2 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
-		}
-
-		switch {
-		case g.VariableMap[val2.Value.(string)].Type == Int && val1.Type == Int:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(int) >= val1.Value.(int)})
-		case g.VariableMap[val2.Value.(string)].Type == Float && val1.Type == Float:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(float64) >= val1.Value.(float64)})
-		case g.VariableMap[val2.Value.(string)].Type == Int && val1.Type == Float:
-			g.Push(StackElement{Type: Bool, Value: float64(g.VariableMap[val2.Value.(string)].Value.(int)) >= val1.Value.(float64)})
-		case g.VariableMap[val2.Value.(string)].Type == Float && val1.Type == Int:
-			g.Push(StackElement{Type: Bool, Value: float64(g.VariableMap[val2.Value.(string)].Value.(int)) >= val1.Value.(float64)})
-		default:
-			return errors.New("ERROR: cannot perform GT_THAN_EQ_OP on different types")
-		}
-	default:
-		return errors.New("ERROR: cannot perform GT_THAN_EQ_OP on different types")
-	}
-	return nil
-}
-
-func (g *Gorth) LessThanEqual() error {
-	val1, err := g.Pop()
-	if err != nil {
-		return err
-	}
-
-	val2, err := g.Pop()
-	if err != nil {
-		return err
-	}
-
-	switch {
-	case val1.Type == Int && val2.Type == Int && val1.Type != Identifier && val2.Type != Identifier:
-		g.Push(StackElement{Type: Bool, Value: val2.Value.(int) <= val1.Value.(int)})
-	case val1.Type == Float && val2.Type == Float && val1.Type != Identifier && val2.Type != Identifier:
-		g.Push(StackElement{Type: Bool, Value: val2.Value.(float64) <= val1.Value.(float64)})
-	case val1.Type == Int && val2.Type == Float && val1.Type != Identifier && val2.Type != Identifier:
-		g.Push(StackElement{Type: Bool, Value: val2.Value.(float64) <= float64(val1.Value.(int))})
-	case val1.Type == Float && val2.Type == Int && val1.Type != Identifier && val2.Type != Identifier:
-		g.Push(StackElement{Type: Bool, Value: float64(val2.Value.(int)) <= val1.Value.(float64)})
-	// using variables
-	case val1.Type == Identifier && val2.Type == Identifier:
-		_, exists1 := g.VariableMap[val1.Value.(string)]
-		_, exists2 := g.VariableMap[val2.Value.(string)]
-
-		if !exists1 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val1.Value.(string))
-		}
-
-		if !exists2 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
-		}
-
-		switch {
-		case g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == Int:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(int) <= g.VariableMap[val1.Value.(string)].Value.(int)})
-		case g.VariableMap[val1.Value.(string)].Type == Float && g.VariableMap[val2.Value.(string)].Type == Float:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(float64) <= g.VariableMap[val1.Value.(string)].Value.(float64)})
-		case g.VariableMap[val1.Value.(string)].Type == Int && g.VariableMap[val2.Value.(string)].Type == Float:
-			g.Push(StackElement{Type: Bool, Value: float64(g.VariableMap[val2.Value.(string)].Value.(int)) <= g.VariableMap[val1.Value.(string)].Value.(float64)})
-		case g.VariableMap[val1.Value.(string)].Type == Float && g.VariableMap[val2.Value.(string)].Type == Int:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(float64) <= float64(g.VariableMap[val1.Value.(string)].Value.(int))})
-		default:
-			return errors.New("ERROR: cannot perform LS_THAN_EQ_OP on different types")
-		}
-	// val1 is a variable and val2 is not
-	case val1.Type == Identifier && val2.Type != Identifier:
-		_, exists1 := g.VariableMap[val1.Value.(string)]
-
-		if !exists1 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val1.Value.(string))
-		}
-
-		switch {
-		case g.VariableMap[val1.Value.(string)].Type == Int && val2.Type == Int:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val1.Value.(string)].Value.(int) <= val2.Value.(int)})
-		case g.VariableMap[val1.Value.(string)].Type == Float && val2.Type == Float:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val1.Value.(string)].Value.(float64) <= val2.Value.(float64)})
-		case g.VariableMap[val1.Value.(string)].Type == Int && val2.Type == Float:
-			g.Push(StackElement{Type: Bool, Value: float64(g.VariableMap[val1.Value.(string)].Value.(int)) <= val2.Value.(float64)})
-		case g.VariableMap[val1.Value.(string)].Type == Float && val2.Type == Int:
-			g.Push(StackElement{Type: Bool, Value: float64(g.VariableMap[val1.Value.(string)].Value.(int)) <= val2.Value.(float64)})
-		default:
-			return errors.New("ERROR: cannot perform LS_THAN_EQ_OP on different types")
-		}
-	// val2 is a variable and val1 is not
-	case val1.Type != Identifier && val2.Type == Identifier:
-		_, exists2 := g.VariableMap[val2.Value.(string)]
-
-		if !exists2 {
-			return fmt.Errorf("ERROR: variable %v has not been declared", val2.Value.(string))
-		}
-
-		switch {
-		case g.VariableMap[val2.Value.(string)].Type == Int && val1.Type == Int:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(int) <= val1.Value.(int)})
-		case g.VariableMap[val2.Value.(string)].Type == Float && val1.Type == Float:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(float64) <= val1.Value.(float64)})
-		case g.VariableMap[val2.Value.(string)].Type == Int && val1.Type == Float:
-			g.Push(StackElement{Type: Bool, Value: float64(g.VariableMap[val2.Value.(string)].Value.(int)) <= val1.Value.(float64)})
-		case g.VariableMap[val2.Value.(string)].Type == Float && val1.Type == Int:
-			g.Push(StackElement{Type: Bool, Value: g.VariableMap[val2.Value.(string)].Value.(float64) <= val1.Value.(float64)})
-		default:
-			return errors.New("ERROR: cannot perform LS_THAN_EQ_OP on different types")
-		}
-	default:
-		return errors.New("ERROR: cannot perform LS_THAN_EQ_OP on different types")
-	}
-	return nil
-}
-
-func (g *Gorth) VarAssign() error {
-	val1, err := g.Pop()
-
-	if err != nil {
-		return errors.New("ERROR: stack is empty, cannot assign from an empty stack")
-	}
-
-	// this should be the variable on the stack
-	val2, err := g.Pop()
-
-	if err != nil {
-		return errors.New("ERROR: stack is empty, cannot assign from an empty stack")
-	}
-
-	// if this value is not an identifier
-	if val2.Type != Identifier {
-		return errors.New("ERROR: cannot assign a value to a non-variable")
-	}
-
-	// if the value is an identifier
-	// check if the variable has been declared
-	// if it has, update the value
-	variable, exists := g.VariableMap[val2.Value.(string)]
-
-	if !exists {
-		return fmt.Errorf("ERROR: variable %v has not been declared on the stack", val2.Value.(string))
-	}
-
-	if g.VariableMap[val2.Value.(string)].Const {
-		return fmt.Errorf("ERROR: variable %v is a constant and cannot be reassigned", val2.Value.(string))
-	}
-
-	// change the value of the variable in the variable map
-	switch variable.Type {
-	case Int:
-		if val1.Type == Int {
-			g.VariableMap[val2.Value.(string)] = Variable{Type: Int, Value: val1.Value.(int), Name: val2.Value.(string), Const: false}
-		} else {
-			return errors.New("ERROR: cannot assign a non-integer value to an integer variable")
-		}
-	case Float:
-		if val1.Type == Float {
-			g.VariableMap[val2.Value.(string)] = Variable{Type: Float, Value: val1.Value.(float64), Name: val2.Value.(string), Const: false}
-		} else {
-			return errors.New("ERROR: cannot assign a non-float value to a float variable")
-		}
-	case Bool:
-		if val1.Type == Bool {
-			g.VariableMap[val2.Value.(string)] = Variable{Type: Bool, Value: val1.Value.(bool), Name: val2.Value.(string), Const: false}
-		} else {
-			return errors.New("ERROR: cannot assign a non-boolean value to a boolean variable")
-		}
-	case String:
-		if val1.Type == String {
-			g.VariableMap[val2.Value.(string)] = Variable{Type: String, Value: val1.Value.(string), Name: val2.Value.(string), Const: false}
-		} else {
-			return errors.New("ERROR: cannot assign a non-string value to a string variable")
-		}
-	default:
-		return errors.New("ERROR: cannot assign a value to a non-variable")
-	}
-
-	return nil
-}
-
-func (g *Gorth) PrintStack() {
-	fmt.Printf("Program stack: %v\n", g.ExecStack)
-}
-
-func (g *Gorth) ExecuteProgram(program []StackElement) error {
-	for _, op := range program {
-		if g.DebugMode {
-			fmt.Println("Current operation: " + fmt.Sprintf("%v", op.Type == Operator))
-			fmt.Println("Current Stack: ", g.ExecStack)
-		}
-
-		if op.Type == Operator {
-			switch op.Value {
-			case ADD_OP:
-				err := g.Add()
-				if err != nil {
-					return err
-				}
-			case SUB_OP:
-				err := g.Sub()
-				if err != nil {
-					return err
-				}
-			case MUL_OP:
-				err := g.Mul()
-				if err != nil {
-					return err
-				}
-			case DIV_OP:
-				err := g.Div()
-				if err != nil {
-					return err
-				}
-			case MOD_OP:
-				err := g.Mod()
-				if err != nil {
-					return err
-				}
-			case EXP_OP:
-				err := g.Exp()
-				if err != nil {
-					return err
-				}
-			case INC_OP:
-				err := g.Inc()
-				if err != nil {
-					return err
-				}
-			case DEC_OP:
-				err := g.Dec()
-				if err != nil {
-					return err
-				}
-			case SWAP_OP:
-				err := g.Swap()
-				if err != nil {
-					return err
-				}
-			case DUP_OP:
-				err := g.Dup()
-				if err != nil {
-					return err
-				}
-			case DROP_OP:
-				err := g.Drop()
-				if err != nil {
-					return err
-				}
-			case DUMP_OP:
-				err := g.Dump()
-				if err != nil {
-					return err
-				}
-			case PRINT_OP:
-				err := g.Print()
-				if err != nil {
-					return err
-				}
-			case AND_OP:
-				err := g.And()
-				if err != nil {
-					return err
-				}
-			case OR_OP:
-				err := g.Or()
-				if err != nil {
-					return err
-				}
-			case NOT_OP:
-				err := g.Not()
-				if err != nil {
-					return err
-				}
-			case EQUAL_OP:
-				err := g.Equal()
-				if err != nil {
-					return err
-				}
-			case NOT_EQUAL_OP:
-				g.NotEqual()
-			case EQUAL_TYP_OP:
-				err := g.EqualType()
-				if err != nil {
-					return err
-				}
-			case GT_THAN_OP:
-				err := g.GreaterThan()
-				if err != nil {
-					return err
-				}
-			case LS_THAN_OP:
-				err := g.LessThan()
-				if err != nil {
-					return err
-				}
-			case GT_THAN_EQ_OP:
-				err := g.GreaterThanEqual()
-				if err != nil {
-					return err
-				}
-			case LS_THAN_EQ_OP:
-				err := g.LessThanEqual()
-				if err != nil {
-					return err
-				}
-			case ROT_OP:
-				err := g.Rot()
-				if err != nil {
-					return err
-				}
-			case VAR_ASSIGN_OP:
-				err := g.VarAssign()
-				if err != nil {
-					return err
-				}
-			}
-		} else {
-			err := g.Push(op)
+func (g *Gorth) ExecuteStack(p []StackElement) {
+	for _, e := range p {
+		switch e.Type {
+		// MISC OPERATIONS
+		case PRINT_OP:
+			err := g.Print()
 			if err != nil {
-				return err
+				panic(err)
 			}
+		case PRINTLN_OP:
+			err := g.Println()
+			if err != nil {
+				panic(err)
+			}
+		case DUMP_OP:
+			err := g.Dump()
+			if err != nil {
+				panic(err)
+			}
+
+		// ARITHMETIC OPERATIONS
+		case ADD_OP:
+			err := g.Add()
+			if err != nil {
+				panic(err)
+			}
+		case SUB_OP:
+			err := g.Subtract()
+			if err != nil {
+				panic(err)
+			}
+		case MUL_OP:
+			err := g.Multiply()
+			if err != nil {
+				panic(err)
+			}
+		case DIV_OP:
+			err := g.Divide()
+			if err != nil {
+				panic(err)
+			}
+		case POW_OP:
+			err := g.Pow()
+			if err != nil {
+				panic(err)
+			}
+		case MOD_OP:
+			err := g.Mod()
+			if err != nil {
+				panic(err)
+			}
+		case INC_OP:
+			err := g.Increment()
+			if err != nil {
+				panic(err)
+			}
+		case DEC_OP:
+			err := g.Decrement()
+			if err != nil {
+				panic(err)
+			}
+
+		// STACK OPERATIONS
+		case DROP_OP:
+			err := g.Drop()
+			if err != nil {
+				panic(err)
+			}
+		case SWAP_OP:
+			err := g.Swap()
+			if err != nil {
+				panic(err)
+			}
+		case DUP_OP:
+			err := g.Dup()
+			if err != nil {
+				panic(err)
+			}
+		case OVER_OP:
+			err := g.Over()
+			if err != nil {
+				panic(err)
+			}
+		case ROT_OP:
+			err := g.Rot()
+			if err != nil {
+				panic(err)
+			}
+		case DELETE_OP:
+			err := g.Delete()
+			if err != nil {
+				panic(err)
+			}
+
+		// ASSIGNMENT
+		case ASSIGN_OP:
+			err := g.AssignVar()
+			if err != nil {
+				panic(err)
+			}
+
+		// DEREF_OP
+		case DEREF_OP:
+			g.Push(e)
+			err := g.Dereference()
+			if err != nil {
+				panic(err)
+			}
+		default:
+			g.Push(e)
 		}
 	}
 
 	if g.StrictMode {
-		if len(g.ExecStack) > 0 {
-			return fmt.Errorf("ERROR: unconsumed elements remain on the stack\n\t%v", g.ExecStack)
+		if len(g.ExecutionStack) > 1 {
+			panic("error: execution stack must be empty at the end of the program")
+		}
+	}
+	if g.DebugMode {
+		fmt.Println("Program Stack at the end of execution:")
+		fmt.Print("\t")
+		g.ExecStackRepr()
+		fmt.Println("Symbol Table at the end of execution:")
+		fmt.Print("\t")
+		g.SemanticAnalyser.VariablesRepr()
+	}
+}
+
+/**
+ * LEXER START
+ */
+type Position struct {
+	line   int
+	column int
+}
+
+type Lexer struct {
+	pos    Position
+	reader *bufio.Reader
+}
+
+// Returns a new lexer with the given reader
+func NewLexer(reader io.Reader) *Lexer {
+	return &Lexer{
+		pos:    Position{line: 1, column: 1},
+		reader: bufio.NewReader(reader),
+	}
+}
+
+// Lex scans the input for the next token, and returns the position of the token, type of the token, and the value of the token
+func (l *Lexer) Lex() (Position, Token, string) {
+	for {
+		r, _, err := l.reader.ReadRune()
+		if err != nil {
+			if err == io.EOF {
+				return l.pos, EOF, ""
+			}
+
+			panic(err)
+		}
+
+		l.pos.column++
+
+		switch {
+		case r == '\n':
+			l.JumpToNextLine()
+		case r == '\t':
+			// a tab is 4 spaces
+			l.pos.column += 4
+		case unicode.IsLetter(r):
+			startPos := l.pos
+			l.Backup()
+			token, lit := l.LexIdentifier()
+			return startPos, token, lit
+		case unicode.IsDigit(r):
+			startPos := l.pos
+			l.Backup()
+			token, lit := l.LexNumber()
+			return startPos, token, lit
+		case unicode.IsSpace(r):
+			continue
+		case unicode.IsSymbol(r), unicode.IsPunct(r):
+			switch r {
+			case '#':
+				// means the entire line is a comment
+				// consume the rest of the line
+				for {
+					r, _, err = l.reader.ReadRune()
+					if err != nil || r == '\n' {
+						break
+					}
+				}
+
+				l.JumpToNextLine()
+			case '+':
+				return l.pos, ADD_OP, string(r)
+			case '-':
+				return l.pos, SUB_OP, string(r)
+			case '*':
+				nextR, err := l.PeekNextChar()
+				if err != nil {
+					panic(err)
+				}
+
+				if unicode.IsDigit(nextR) {
+					l.Backup()
+					token, digit := l.LexNumber()
+
+					if token == FLOAT {
+						panic("err: pointers cannot be floats")
+					}
+
+					return l.pos, PTR, fmt.Sprintf("*%s", digit)
+				}
+
+				return l.pos, MUL_OP, string(r)
+			case '&':
+				// we are dereferencing a pointer
+				nextR, err := l.PeekNextChar()
+				if err != nil {
+					panic(err)
+				}
+
+				if unicode.IsDigit(nextR) {
+					// means it's not a variable pointer
+					l.Backup()
+					token, digit := l.LexNumber()
+
+					if token != INT {
+						panic("err: cannot dereference by a float")
+					}
+
+					return l.pos, DEREF_OP, fmt.Sprintf("&%s", digit)
+				} else {
+					// means it's a variable pointer cos it's a string
+					// we need to get the variable name
+					// and check if it's a pointer and then dereference by its value
+					l.Backup()
+					_, lit := l.LexIdentifier()
+
+					return l.pos, DEREF_OP, fmt.Sprintf("&%s", lit)
+				}
+
+			case '/':
+				return l.pos, DIV_OP, string(r)
+			case '^':
+				return l.pos, POW_OP, string(r)
+			case '%':
+				return l.pos, MOD_OP, string(r)
+			case '"':
+				startPos := l.pos
+				token, lit := l.LexString()
+				return startPos, token, lit
+			case '`':
+				startPos := l.pos
+				token, lit := l.LexMultiLineString()
+				return startPos, token, lit
+			case '=':
+				return l.pos, ASSIGN_OP, string(r)
+			}
+		default:
+			return l.pos, ILLEGAL, string(r)
+		}
+	}
+}
+
+// backup moves the reader back one rune
+func (l *Lexer) Backup() {
+	if err := l.reader.UnreadRune(); err != nil {
+		panic(err)
+	}
+
+	l.pos.column--
+}
+
+func (l *Lexer) PeekNextChar() (rune, error) {
+	r, _, err := l.reader.ReadRune()
+
+	if err != nil {
+		if err == io.EOF {
+			return 0, nil
+		}
+
+		return 0, err
+	}
+
+	return r, nil
+}
+
+func (l *Lexer) LexIdentifier() (Token, string) {
+	var lit string
+
+	for {
+		r, _, err := l.reader.ReadRune()
+		if err != nil {
+			if err == io.EOF {
+				if IsOperator(lit) {
+					return identifierMap[lit], lit
+				} else {
+					// TODO: Research which scenarios can cause this
+					return VARIABLE, lit
+				}
+			}
+
+			panic(err)
+		}
+
+		l.pos.column++
+		if string(r) == "\n" {
+			// when we reach a newLine we return the current literal since we can't continue reading the identifier
+			if IsOperator(lit) {
+				return identifierMap[lit], lit
+			}
+
+			// anything other than an operator is assumed to be a variable
+			return VARIABLE, lit
+		} else if unicode.IsLetter(r) {
+			lit = lit + string(r)
+		} else {
+			l.Backup()
+
+			// fmt.Printf("Identifier: %v \n", lit)
+
+			// check if lit does not exist in identifierMap
+			if !IsOperator(lit) {
+				var nextR rune
+				var err error
+				var counts int
+
+				// Skip all whitespace runes until we get to the next rune
+				for {
+					nextR, _, err = l.reader.ReadRune()
+					if err != nil {
+						if err == io.EOF {
+							break
+						}
+						panic(err)
+					}
+
+					// fmt.Printf("Next Rune: %v \n Is Space: %v \n", string(nextR), unicode.IsSpace(nextR))
+
+					if !unicode.IsSpace(nextR) {
+						break
+					}
+					counts++
+				}
+
+				// fmt.Printf("This is how many spaces were skipped: %v", counts)
+
+				// Backup the reader
+				for i := 0; i < counts; i++ {
+					l.Backup()
+				}
+
+				return VARIABLE, lit
+			}
+
+			return identifierMap[lit], lit
+		}
+	}
+}
+
+func (l *Lexer) LexNumber() (Token, string) {
+	var lit string
+	var tokenType Token = INT
+	position := l.pos
+
+	for {
+		r, _, err := l.reader.ReadRune()
+
+		if err != nil {
+			if err == io.EOF {
+				return tokenType, lit
+			}
+
+			panic(err)
+		}
+
+		if (unicode.IsSymbol(r) || unicode.IsPunct(r)) && r != '=' && len(lit) > 0 {
+			panic(fmt.Errorf("error: invalid token %v at line %v col %v", string(r), l.pos.line, l.pos.column))
+		}
+
+		if unicode.IsDigit(r) {
+			lit += string(r)
+		} else if IsDecimal(r) {
+			if tokenType == INT {
+				tokenType = FLOAT
+				lit += string(r)
+			} else {
+				panic(fmt.Errorf("unexpected decimal point at line %d column %d", position.line, position.column))
+			}
+		} else {
+			l.Backup()
+			break
 		}
 	}
 
-	if g.DebugMode {
-		fmt.Printf("Program stack at end of execution\n\t%v\n", g.ExecStack)
+	return tokenType, lit
+}
+
+func (l *Lexer) LexMultiLineString() (Token, string) {
+	var lit string
+
+	for {
+		r, _, err := l.reader.ReadRune()
+		if err != nil {
+			if err == io.EOF {
+				return STRING, lit
+			}
+
+			panic(err)
+		}
+
+		if r == '`' {
+			break
+		}
+
+		lit += string(r)
 	}
 
-	return nil
+	return STRING, lit
 }
 
-func PrintUsage() {
-	fmt.Println("Usage: gorth <filename> [options]")
-	fmt.Println("  filename: the name of the .gorth file to execute")
-	fmt.Println("  options:")
-	fmt.Println("    -d: optional enable debug mode")
-	fmt.Println("    -s: optional enable strict mode")
+// LexString scans the input for a string, and returns the string as a string
+func (l *Lexer) LexString() (Token, string) {
+	var lit string
+
+	for {
+		r, _, err := l.reader.ReadRune()
+		if err != nil {
+			if err == io.EOF {
+				return STRING, lit
+			}
+
+			panic(err)
+		}
+
+		if r == '"' {
+			break
+		}
+
+		if r == '\n' {
+			panic(fmt.Errorf("unexpected newline in string at line %d column %d", l.pos.line, l.pos.column))
+		}
+
+		lit += string(r)
+	}
+
+	return STRING, lit
 }
+
+// Resets the position of the lexer to the first col of the next line
+func (l *Lexer) JumpToNextLine() {
+	l.pos.line++
+	l.pos.column = 0
+}
+
+/**
+ * LEXER END
+ */
+
+/**
+ * PARSER START
+ */
+type Parser struct{}
+
+func NewParser() *Parser {
+	return &Parser{}
+}
+
+func (p *Parser) Parse(pos Position, tok Token, lit string) (StackElement, error) {
+	switch tok {
+	default:
+		return StackElement{Type: tok, Value: lit, Position: pos}, nil
+	case ILLEGAL:
+		return StackElement{}, fmt.Errorf("unknown token: %d at line %v col %v", tok, pos.line, pos.column)
+	}
+}
+
+func (p *Parser) BuildAST(s []StackElement) (*Node, error) {
+	var stack []*Node
+	unaryOps := "print|drop|dup|dump|inc|dec|del"
+	binaryOps := "+|-|*|/|mod|pow|swap|over|="
+	ternaryOps := "rot"
+
+	// assert that all ops are included
+	unOps := strings.Split(unaryOps, "|")
+	for _, op := range unOps {
+		_, ok := identifierMap[op]
+		if !ok {
+			return nil, fmt.Errorf("unknown operator: %s, did you perhaps forget to add it to the identifierMap?", op)
+		}
+	}
+
+	binOps := strings.Split(binaryOps, "|")
+	for _, op := range binOps {
+		_, ok := identifierMap[op]
+		if !ok {
+			return nil, fmt.Errorf("unknown operator: %s, did you perhaps forget to add it to the identifierMap?", op)
+		}
+	}
+
+	terOps := strings.Split(ternaryOps, "|")
+	for _, op := range terOps {
+		_, ok := identifierMap[op]
+		if !ok {
+			return nil, fmt.Errorf("unknown operator: %s, did you perhaps forget to add it to the identifierMap?", op)
+		}
+	}
+
+	for _, element := range s {
+		if IsOperator(element.Value) {
+			switch {
+			case strings.Contains(unaryOps, element.Value):
+				if len(stack) < 1 {
+					return nil, fmt.Errorf("syntax error: %s requires at least 1 element on the stack\nline: %v col: %v", element.Value, element.Position.line, element.Position.column)
+				}
+
+				operand := stack[len(stack)-1]
+				stack = stack[:len(stack)-1] // Remove the operand from the stack
+				node := &Node{Value: element.Value, Left: operand}
+				stack = append(stack, node)
+
+			case strings.Contains(binaryOps, element.Value):
+				if len(stack) < 2 {
+					return nil, fmt.Errorf("syntax error: %s requires at least 2 elements on the stack\nline: %v col: %v", element.Value, element.Position.line, element.Position.column)
+				}
+
+				right := stack[len(stack)-1]
+				left := stack[len(stack)-2]
+				node := &Node{Value: element.Value, Left: left, Right: right}
+				stack = stack[:len(stack)-2] // Remove two operands from the stack
+				stack = append(stack, node)
+			case strings.Contains(ternaryOps, element.Value):
+				return nil, fmt.Errorf("ternary operators are not supported yet")
+			}
+		} else {
+			stack = append(stack, &Node{Value: element.Value})
+		}
+	}
+
+	// Combine unary operations if any
+	for len(stack) > 1 {
+		// Pop the top two nodes from the stack
+		right := stack[len(stack)-1]
+		left := stack[len(stack)-2]
+		stack = stack[:len(stack)-2]
+
+		// Create a new node for the binary operation
+		node := &Node{Value: "", Left: left, Right: right}
+
+		// Push the binary operation node onto the stack
+		stack = append(stack, node)
+	}
+
+	if len(stack) != 1 {
+		for _, node := range stack {
+			// get the pointer to the node
+			if node != nil {
+				fmt.Printf("Node: %v\n", node.Value)
+			}
+		}
+		return nil, fmt.Errorf("invalid expression: %v", s)
+	}
+
+	return stack[0], nil
+}
+
+func (p *Parser) PrintAST(root *Node, indent string) {
+	if root == nil {
+		return
+	}
+
+	fmt.Printf("%s%s\n", indent, root.Value)
+	p.PrintAST(root.Left, indent+"  ")
+	p.PrintAST(root.Right, indent+"  ")
+}
+
+// START SEMANTIC ANALYSER
+type SymbolTable struct {
+	Variables map[string]Variable
+}
+type SemanticAnalyser struct {
+	AST         *Node
+	SymbolTable *SymbolTable
+}
+
+func NewSemanticAnalyser() *SemanticAnalyser {
+	return &SemanticAnalyser{
+		SymbolTable: &SymbolTable{
+			Variables: make(map[string]Variable),
+		},
+	}
+}
+
+func (s *SemanticAnalyser) VariablesRepr() {
+	// pretty print the variables
+	fmt.Println("Variables:\t")
+	for k, v := range s.SymbolTable.Variables {
+		fmt.Printf("\t\tVariable: %s, Value: %v, Const: %v, Type: %v, Line: %v, Col: %v\n", k, v.Value, v.Const, tokenMap[v.Type], v.Value.Position.line, v.Value.Position.column)
+	}
+}
+
+func (s *SemanticAnalyser) InferType(lit string) Token {
+	pointerRegex := regexp.MustCompile(`\*\d+`)
+
+	if _, err := strconv.Atoi(lit); err == nil {
+		return INT
+	}
+
+	if _, err := strconv.ParseFloat(lit, 64); err == nil {
+		return FLOAT
+	}
+
+	if lit == "true" || lit == "false" {
+		return BOOL
+	}
+
+	if pointerRegex.MatchString(lit) {
+		return PTR
+	}
+
+	return STRING
+}
+
+// END SEMANTIC ANALYSER
+
+/**
+ * PARSER END
+ */
 
 func main() {
-	// get system arguments
+	// get the other arguments even if there are not in the correct order
+	debugMode := flag.Bool("d", false, "enable debug mode")
+	strictMode := flag.Bool("s", false, "enable strict mode")
+	filePath := flag.String("f", "", "path to the file to execute")
+	flag.Parse()
+
+	// check if the first argument is a .gorth file
+	if !strings.HasSuffix(*filePath, ".gorth") {
+		panic(fmt.Sprintf("File %s is not a .gorth file", *filePath))
+	}
+
+	// check if the file exists
+	_, err := os.Stat(*filePath)
+	if os.IsNotExist(err) {
+		panic(fmt.Sprintf("File %s does not exist", *filePath))
+	}
+
+	file, err := os.Open(*filePath)
+
+	if err != nil {
+		panic(err)
+	}
+
 	args := os.Args[1:]
 
 	// check if there are no arguments
@@ -2332,75 +1715,44 @@ func main() {
 		return
 	}
 
-	// check if there are too many arguments
-	if len(args) > 3 {
-		panic("Too many arguments provided")
-	}
+	parser := NewParser()
+	lexer := NewLexer(file)
+	semanticAnalyser := NewSemanticAnalyser()
 
-	// check if the first argument is a .gorth file
-	if !strings.HasSuffix(args[0], ".gorth") {
-		panic(fmt.Sprintf("File %s is not a .gorth file", args[0]))
-	}
+	gorth := NewGorth(*strictMode, *debugMode, parser, lexer, semanticAnalyser)
+	program := make([]StackElement, 0)
 
-	// check if the file exists
-	_, err := os.Stat(args[0])
-	if os.IsNotExist(err) {
-		panic(fmt.Sprintf("File %s does not exist", args[0]))
-	}
-
-	// read the file
-	lines, err := ReadGorthFile(args[0])
-	if err != nil {
-		panic(err)
-	}
-
-	// get the other arguments even if there are not in the correct order
-	debugMode := false
-	strictMode := false
-
-	for _, arg := range args[1:] {
-		switch arg {
-		case "-d":
-			debugMode = true
-		case "-s":
-			strictMode = true
-		default:
-			panic(fmt.Sprintf("Invalid option: %s", arg))
+	for {
+		pos, tok, lit := gorth.Lexer.Lex()
+		if tok == EOF {
+			break
 		}
+
+		element, err := gorth.Parser.Parse(pos, tok, lit)
+
+		if err != nil {
+			panic(fmt.Errorf("error parsing token: %v", err))
+		}
+
+		// add the parsed token to the program stack
+		program = append(program, element)
+
+		// fmt.Printf("Token: %v, Literal: %s, Line: %d, Column: %d\n", tokenMap[tok], lit, pos.line, pos.column)
 	}
 
-	// parse the program
-	program, variables, err := Tokenize(strings.Join(lines, " "))
+	// print the AST
+	if gorth.DebugMode {
+		root, err := gorth.Parser.BuildAST(program)
+		if err != nil {
+			panic(fmt.Errorf("error building AST: %v", err))
+		}
 
-	if err != nil {
-		panic(err)
+		semanticAnalyser.AST = root
+
+		fmt.Println("Program AST: ")
+		gorth.Parser.PrintAST(root, "")
 	}
 
-	// create a new gorth instance
-	g := NewGorth(debugMode, strictMode)
-
-	g.VariableMap = variables
-
-	if g.DebugMode {
-		fmt.Println("Variables: ", g.VariableMap)
-		fmt.Println("Program: ", program)
-	}
-
-	start := time.Now()
-
-	if g.DebugMode {
-		fmt.Printf("Program stack at start of execution\n\t%v\n", g.ExecStack)
-	}
-
-	// execute the program
-	err = g.ExecuteProgram(program)
-
-	end := time.Now()
-
-	if err != nil {
-		fmt.Println("Program simulation failed")
-		fmt.Println(err)
-	} else {
-		fmt.Printf("Program simulation completed in %v seconds\n", end.Sub(start).Seconds())
-	}
+	fmt.Println("Program output:")
+	gorth.ExecuteStack(program)
 }
