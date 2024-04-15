@@ -78,8 +78,6 @@ var identifierMap = map[string]Token{
 	"%":   MOD_OP,
 	"inc": INC_OP,
 	"dec": DEC_OP,
-	"mod": MOD_OP,
-	"pow": POW_OP,
 
 	// ASSIGNMENT
 	"=": ASSIGN_OP,

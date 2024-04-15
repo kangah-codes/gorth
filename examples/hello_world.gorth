@@ -1,2 +1,3 @@
-`My name is Joshua Akangah`
-println println
+"Hello" "World" "!" "Gorth" "is" "cool"
+
+&0 " " + &1 + println
