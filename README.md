@@ -9,7 +9,7 @@
 
 ## Description
 
-Gorth is a Go implementation of a simple stack-based language. It is a work in progress and is not yet feature complete. Heavily inspired by Porth.
+Gorth is a Go implementation of a simple stack-based (concatenative) language. It is a work in progress and is not yet feature complete.
 
 ## Features
 
