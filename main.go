@@ -1,7 +1,28 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+
+	"gorth/lexer"
+)
 
 func main() {
-	fmt.Println("Welcome to Gorth!")
+	// Test input - modify this to test different code
+	input := `5 10 +`
+
+	// Create lexer
+	lex := lexer.NewLexer(strings.NewReader(input))
+
+	// Print all tokens
+	fmt.Println("Tokens:")
+	fmt.Println("-------")
+	for {
+		tok := lex.NextToken()
+		fmt.Printf("%-15s %-15s %s\n", tok.Type, tok.Literal, tok.Pos)
+
+		if tok.Type == lexer.EOF {
+			break
+		}
+	}
 }

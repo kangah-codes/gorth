@@ -20,10 +20,12 @@ type StackElement struct {
 }
 
 func NewLexer(reader io.Reader) *Lexer {
-	return &Lexer{
+	l := &Lexer{
 		position: NewPosition(1, 1),
 		reader:   bufio.NewReader(reader),
 	}
+	l.char, _ = l.readChar()
+	return l
 }
 
 func (l *Lexer) jumpToNextLine() {
@@ -102,11 +104,15 @@ func (l *Lexer) classifyIdent(lit string) TokenType {
 func (l *Lexer) readIdent() (string, TokenType) {
 	var lit string
 
+	// Start with current character
+	lit = string(l.char)
+
 	// Read all valid identifier characters
 	for {
 		r, _, err := l.reader.ReadRune()
 		if err != nil {
 			if err == io.EOF {
+				l.char = 0
 				return lit, l.classifyIdent(lit)
 			}
 			panic(err)
@@ -116,7 +122,7 @@ func (l *Lexer) readIdent() (string, TokenType) {
 
 		// Stop reading when we hit a non-letter character
 		if !unicode.IsLetter(r) {
-			l.backup()
+			l.char = r
 			return lit, l.classifyIdent(lit)
 		}
 
@@ -130,11 +136,15 @@ func (l *Lexer) readNumber() (string, TokenType) {
 	var literal string
 	var tokenType TokenType = INT
 
+	// Start with current character
+	literal = string(l.char)
+
 	for {
 		r, _, err := l.reader.ReadRune()
 
 		if err != nil {
 			if err == io.EOF {
+				l.char = 0
 				return literal, tokenType
 			}
 
@@ -142,7 +152,9 @@ func (l *Lexer) readNumber() (string, TokenType) {
 			panic(err)
 		}
 
-		if unicode.IsSymbol(r) || unicode.IsPunct(r) && r != '=' && len(literal) > 0 {
+		l.position.Column++
+
+		if unicode.IsSymbol(r) || unicode.IsPunct(r) && r != '.' && len(literal) > 0 {
 			panic(fmt.Errorf("error: invalid token %v at line %v col %v", string(r), l.position.Line, l.position.Column))
 		}
 
@@ -156,23 +168,30 @@ func (l *Lexer) readNumber() (string, TokenType) {
 				panic(fmt.Errorf("unexpected decimal point at line %d column %d", position.Line, position.Column))
 			}
 		} else {
-			l.backup()
-			break
+			l.char = r
+			return literal, tokenType
 		}
 	}
-
-	return literal, tokenType
 }
 
 func (l *Lexer) NextToken() Token {
+	// skip whitespace (except newlines)
+	for l.char == ' ' || l.char == '\t' || l.char == '\r' {
+		l.char, _ = l.readChar()
+		l.position.Column++
+	}
+
 	tok := Token{Pos: l.position}
 
 	switch l.char {
 	case 0:
 		tok.Type = EOF
+		return tok
 	case '\n':
 		tok.Type = EOF
-		l.readChar()
+		l.char, _ = l.readChar()
+		l.position.Column++
+		return tok
 	case '#':
 		l.jumpToNextLine()
 	case '+':
@@ -275,19 +294,22 @@ func (l *Lexer) NextToken() Token {
 		tok.Literal = string(l.char)
 	default:
 		if unicode.IsLetter(l.char) {
-			l, t := l.readIdent()
-			tok.Literal = l
+			lit, t := l.readIdent()
+			tok.Literal = lit
 			tok.Type = t
+			return tok
 		} else if unicode.IsDigit(l.char) {
-			l, t := l.readNumber()
-			tok.Literal = l
+			lit, t := l.readNumber()
+			tok.Literal = lit
 			tok.Type = t
+			return tok
 		} else {
 			tok.Type = ILLEGAL
 			tok.Literal = string(l.char)
 		}
 	}
 
-	l.readChar()
+	l.char, _ = l.readChar()
+	l.position.Column++
 	return tok
 }
