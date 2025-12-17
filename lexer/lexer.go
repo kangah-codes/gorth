@@ -30,7 +30,7 @@ func NewLexer(reader io.Reader) *Lexer {
 
 func (l *Lexer) jumpToNextLine() {
 	l.position.Line++
-	l.position.Column = 0
+	l.position.Column = 1
 }
 
 func (l *Lexer) readChar() (rune, error) {
@@ -54,7 +54,10 @@ func (l *Lexer) peekChar() rune {
 	}
 
 	if r != 0 {
-		l.backup()
+		if err := l.reader.UnreadRune(); err != nil {
+			// TODO: use gorth error here
+			panic(err)
+		}
 	}
 
 	return r
@@ -68,12 +71,6 @@ func (l *Lexer) backup() {
 
 	// go back a column
 	l.position.Column--
-}
-
-// skips whitespace in buffer
-func (l *Lexer) skipWhitespace() {
-	// jump ahead if current rune is whitespace
-	l.position.Column++
 }
 
 // reads a pointer from the stack
@@ -97,10 +94,11 @@ func (l *Lexer) classifyIdent(lit string) TokenType {
 		return tokType
 	}
 
-	// will be variable soon
-	return ILLEGAL
+	// means its a variable
+	return VARIABLE
 }
 
+// read identifiers
 func (l *Lexer) readIdent() (string, TokenType) {
 	var lit string
 
@@ -121,13 +119,83 @@ func (l *Lexer) readIdent() (string, TokenType) {
 		l.position.Column++
 
 		// Stop reading when we hit a non-letter character
-		if !unicode.IsLetter(r) {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
 			l.char = r
 			return lit, l.classifyIdent(lit)
 		}
 
 		lit += string(r)
 	}
+}
+
+// read variable names from a sequence of chars
+func (l *Lexer) readVariable() (string, TokenType) {
+	var literal string
+
+	literal = string(l.char)
+
+	r, _ := l.readChar()
+	l.position.Column++
+
+	if !unicode.IsLetter(r) {
+		panic(fmt.Errorf("variable must start with $ followed by a letter at line %d column %d", l.position.Line, l.position.Column))
+	}
+
+	literal += string(r)
+
+	for {
+		r, _, err := l.reader.ReadRune()
+		if err != nil {
+			if err == io.EOF {
+				l.char = 0
+				return literal, VARIABLE
+			}
+
+			panic(err)
+		}
+
+		l.position.Column++
+
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+			l.char = r
+			return literal, VARIABLE
+		}
+
+		literal += string(r)
+	}
+}
+
+// reads strings from a sequence of chars starting with "
+func (l *Lexer) readString() (string, TokenType) {
+	var literal string
+
+	// skip opening quote
+	l.char, _ = l.readChar()
+	l.position.Column++
+
+	for {
+		if l.char == 0 {
+			panic(fmt.Errorf("unterminated string at line %d column %d", l.position.Line, l.position.Column))
+		}
+
+		// closing quotes
+		if l.char == '"' {
+			break
+		}
+
+		if l.char == '\n' {
+			// TODO: language design, should we allow multiline strings like these? maybe not
+			// l.jumpToNextLine()
+			panic(fmt.Errorf("unterminated string before newline at line %d column %d", l.position.Line, l.position.Column))
+		} else {
+			l.position.Column++
+		}
+
+		literal += string(l.char)
+		l.char, _ = l.readChar()
+	}
+
+	return literal, STRING
 }
 
 // reads numbers from a sequence of runes
@@ -175,10 +243,14 @@ func (l *Lexer) readNumber() (string, TokenType) {
 }
 
 func (l *Lexer) NextToken() Token {
-	// skip whitespace (except newlines)
-	for l.char == ' ' || l.char == '\t' || l.char == '\r' {
+	// skip whitespace
+	for l.char == ' ' || l.char == '\t' || l.char == '\r' || l.char == '\n' {
+		if l.char == '\n' {
+			l.jumpToNextLine()
+		} else {
+			l.position.Column++
+		}
 		l.char, _ = l.readChar()
-		l.position.Column++
 	}
 
 	tok := Token{Pos: l.position}
@@ -187,13 +259,16 @@ func (l *Lexer) NextToken() Token {
 	case 0:
 		tok.Type = EOF
 		return tok
-	case '\n':
-		tok.Type = EOF
-		l.char, _ = l.readChar()
-		l.position.Column++
-		return tok
 	case '#':
-		l.jumpToNextLine()
+		// skip everything until end of line
+		for {
+			r, _ := l.readChar()
+			if r == '\n' || r == 0 {
+				l.char = r
+				break
+			}
+		}
+		return l.NextToken()
 	case '+':
 		tok.Type = PLUS
 		tok.Literal = string(l.char)
@@ -276,6 +351,7 @@ func (l *Lexer) NextToken() Token {
 	case '|':
 		if l.peekChar() == '|' {
 			char := l.char
+			// consume next char
 			l.readChar()
 			tok.Type = OR
 			tok.Literal = string(char) + string(l.char)
@@ -290,8 +366,13 @@ func (l *Lexer) NextToken() Token {
 		tok.Type = RBRACKET
 		tok.Literal = string(l.char)
 	case '"':
-		tok.Type = STRING
-		tok.Literal = string(l.char)
+		tok.Literal, tok.Type = l.readString()
+		// consume closing quote
+		l.char, _ = l.readChar()
+		l.position.Column++
+		return tok
+	case '$':
+		tok.Literal, tok.Type = l.readVariable()
 	default:
 		if unicode.IsLetter(l.char) {
 			lit, t := l.readIdent()

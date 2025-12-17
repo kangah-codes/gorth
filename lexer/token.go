@@ -80,6 +80,8 @@ const (
 
 	// Comment
 
+	// Variables
+	VARIABLE TokenType = "VARIABLE"
 )
 
 type Token struct {

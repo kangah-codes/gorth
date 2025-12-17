@@ -9,7 +9,15 @@ import (
 
 func main() {
 	// Test input - modify this to test different code
-	input := `5 10 +`
+	input := `
+		"Hello, World!" print drop
+
+		# or this, if in strict mode
+
+		"Hello, World!" dump
+
+		|| $name $fuck123 12.89 pi 3.14 =
+	`
 
 	// Create lexer
 	lex := lexer.NewLexer(strings.NewReader(input))
