@@ -1,4 +1,4 @@
-package runtime
+package goruntime
 
 import "gorth/lexer"
 

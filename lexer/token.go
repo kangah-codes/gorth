@@ -25,12 +25,12 @@ const (
 	TYPE_ARR   TokenType = "TYPE_ARR"
 
 	// keywords
-	PLUS     TokenType = "PLUS"     // +
-	MINUS    TokenType = "MINUS"    // -
-	MULTIPLY TokenType = "MULTIPLY" // *
-	DIVIDE   TokenType = "DIVIDE"   // /
-	POWER    TokenType = "POWER"    // ^
-	MODULO   TokenType = "MODULO"   // %
+	OP_PLUS     TokenType = "OP_PLUS"     // +
+	OP_MINUS    TokenType = "OP_MINUS"    // -
+	OP_MULTIPLY TokenType = "OP_MULTIPLY" // *
+	OP_DIVIDE   TokenType = "OP_DIVIDE"   // /
+	OP_POWER    TokenType = "OP_POWER"    // ^
+	OP_MODULO   TokenType = "OP_MODULO"   // %
 
 	// Comparison
 	EQ  TokenType = "EQ"  // ==
@@ -41,9 +41,9 @@ const (
 	LTE TokenType = "LTE" // <=
 
 	// Logical
-	AND TokenType = "AND" // &&
-	OR  TokenType = "OR"  // ||
-	NOT TokenType = "NOT" // !
+	OP_AND TokenType = "OP_AND" // &&
+	OP_OR  TokenType = "OP_OR"  // ||
+	OP_NOT TokenType = "OP_NOT" // !
 
 	// Assignment
 	ASSIGN TokenType = "ASSIGN" // =
@@ -56,27 +56,28 @@ const (
 	RETURN  TokenType = "RETURN"
 
 	// Stack operations
-	DROP TokenType = "DROP"
-	SWAP TokenType = "SWAP"
-	DUP  TokenType = "DUP"
-	OVER TokenType = "OVER"
-	ROT  TokenType = "ROT"
-	DEL  TokenType = "DEL"
-	INC  TokenType = "INC"
-	DEC  TokenType = "DEC"
+	OP_DROP TokenType = "OP_DROP"
+	OP_SWAP TokenType = "OP_SWAP"
+	OP_DUP  TokenType = "OP_DUP"
+	OP_OVER TokenType = "OP_OVER"
+	OP_ROT  TokenType = "OP_ROT"
+	OP_DEL  TokenType = "OP_DEL"
+	OP_INC  TokenType = "OP_INC"
+	OP_DEC  TokenType = "OP_DEC"
 
 	// I/O
-	PRINT   TokenType = "PRINT"
-	PRINTLN TokenType = "PRINTLN"
-	DUMP    TokenType = "DUMP"
+	OP_PRINT   TokenType = "OP_PRINT"
+	OP_PRINTLN TokenType = "OP_PRINTLN"
+	OP_DUMP    TokenType = "OP_DUMP"
 
 	// Pointer operations
-	DEREF TokenType = "DEREF" // @
-	PTR   TokenType = "PTR"   // *n format
+	PTR_DEREF TokenType = "PTR_DEREF" // @
+	PTR       TokenType = "PTR"       // *n format
 
 	// Delimiters
 	LBRACKET TokenType = "LBRACKET" // [
 	RBRACKET TokenType = "RBRACKET" // ]
+	COMMA    TokenType = "COMMA"    // ,
 
 	// Comment
 
@@ -88,6 +89,60 @@ type Token struct {
 	Type    TokenType
 	Literal string
 	Pos     Position
+}
+
+var TokenMap = map[TokenType]string{
+	EOF:         "EOF",
+	ILLEGAL:     "ILLEGAL",
+	INT:         "INT",
+	FLOAT:       "FLOAT",
+	STRING:      "STRING",
+	BOOL:        "BOOL",
+	IDENT:       "IDENT",
+	TYPE_INT:    "TYPE_INT",
+	TYPE_STR:    "TYPE_STR",
+	TYPE_BOOL:   "TYPE_BOOL",
+	TYPE_FLOAT:  "TYPE_FLOAT",
+	TYPE_PTR:    "TYPE_PTR",
+	TYPE_ARR:    "TYPE_ARR",
+	OP_PLUS:     "OP_PLUS",
+	OP_MINUS:    "OP_MINUS",
+	OP_MULTIPLY: "OP_MULTIPLY",
+	OP_DIVIDE:   "OP_DIVIDE",
+	OP_POWER:    "OP_POWER",
+	OP_MODULO:   "OP_MODULO",
+	EQ:          "EQ",
+	NEQ:         "NEQ",
+	GT:          "GT",
+	LT:          "LT",
+	GTE:         "GTE",
+	LTE:         "LTE",
+	OP_AND:      "OP_AND",
+	OP_OR:       "OP_OR",
+	OP_NOT:      "OP_NOT",
+	ASSIGN:      "ASSIGN",
+	CONST:       "CONST",
+	PROC:        "PROC",
+	ENDPROC:     "ENDPROC",
+	IN:          "IN",
+	RETURN:      "RETURN",
+	OP_DROP:     "OP_DROP",
+	OP_SWAP:     "OP_SWAP",
+	OP_DUP:      "OP_DUP",
+	OP_OVER:     "OP_OVER",
+	OP_ROT:      "OP_ROT",
+	OP_DEL:      "OP_DEL",
+	OP_INC:      "OP_INC",
+	OP_DEC:      "OP_DEC",
+	OP_PRINT:    "OP_PRINT",
+	OP_PRINTLN:  "OP_PRINTLN",
+	OP_DUMP:     "OP_DUMP",
+	PTR_DEREF:   "PTR_DEREF",
+	PTR:         "PTR",
+	LBRACKET:    "LBRACKET",
+	RBRACKET:    "RBRACKET",
+	COMMA:       "COMMA",
+	VARIABLE:    "VARIABLE",
 }
 
 var keywords = map[string]TokenType{
@@ -104,33 +159,33 @@ var keywords = map[string]TokenType{
 	"float":   TYPE_FLOAT,
 	"ptr":     TYPE_PTR,
 	"arr":     TYPE_ARR,
-	"drop":    DROP,
-	"swap":    SWAP,
-	"dup":     DUP,
-	"over":    OVER,
-	"rot":     ROT,
-	"del":     DEL,
-	"inc":     INC,
-	"dec":     DEC,
-	"print":   PRINT,
-	"println": PRINTLN,
-	"dump":    DUMP,
+	"drop":    OP_DROP,
+	"swap":    OP_SWAP,
+	"dup":     OP_DUP,
+	"over":    OP_OVER,
+	"rot":     OP_ROT,
+	"del":     OP_DEL,
+	"inc":     OP_INC,
+	"dec":     OP_DEC,
+	"print":   OP_PRINT,
+	"println": OP_PRINTLN,
+	"dump":    OP_DUMP,
 
-	"+":  PLUS,
-	"-":  MINUS,
-	"*":  MULTIPLY,
-	"/":  DIVIDE,
-	"^":  POWER,
-	"%":  MODULO,
+	"+":  OP_PLUS,
+	"-":  OP_MINUS,
+	"*":  OP_MULTIPLY,
+	"/":  OP_DIVIDE,
+	"^":  OP_POWER,
+	"%":  OP_MODULO,
 	"==": EQ,
 	"!=": NEQ,
 	">":  GT,
 	"<":  LT,
 	">=": GTE,
 	"<=": LTE,
-	"&&": AND,
-	"||": OR,
-	"!":  NOT,
+	"&&": OP_AND,
+	"||": OP_OR,
+	"!":  OP_NOT,
 	"=":  ASSIGN,
 }
 
@@ -163,10 +218,10 @@ func IsDecimal(c rune) bool {
 
 func (t TokenType) TokenIsOperator() bool {
 	keywords := map[TokenType]bool{
-		PLUS: true, MINUS: true, MULTIPLY: true, DIVIDE: true,
-		POWER: true, MODULO: true, EQ: true, NEQ: true,
+		OP_PLUS: true, OP_MINUS: true, OP_MULTIPLY: true, OP_DIVIDE: true,
+		OP_POWER: true, OP_MODULO: true, EQ: true, NEQ: true,
 		GT: true, LT: true, GTE: true, LTE: true,
-		AND: true, OR: true, NOT: true,
+		OP_AND: true, OP_OR: true, OP_NOT: true,
 	}
 	return keywords[t]
 }

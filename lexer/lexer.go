@@ -94,8 +94,8 @@ func (l *Lexer) classifyIdent(lit string) TokenType {
 		return tokType
 	}
 
-	// means its a variable
-	return VARIABLE
+	// means its most likely illegal
+	return ILLEGAL
 }
 
 // read identifiers
@@ -270,10 +270,10 @@ func (l *Lexer) NextToken() Token {
 		}
 		return l.NextToken()
 	case '+':
-		tok.Type = PLUS
+		tok.Type = OP_PLUS
 		tok.Literal = string(l.char)
 	case '-':
-		tok.Type = MINUS
+		tok.Type = OP_MINUS
 		tok.Literal = string(l.char)
 	case '*':
 		tok.Literal = string(l.char)
@@ -282,15 +282,15 @@ func (l *Lexer) NextToken() Token {
 			return l.readPtr()
 		}
 		// else it's just a multiple
-		tok.Type = MULTIPLY
+		tok.Type = OP_MULTIPLY
 	case '/':
-		tok.Type = DIVIDE
+		tok.Type = OP_DIVIDE
 		tok.Literal = string(l.char)
 	case '^':
-		tok.Type = POWER
+		tok.Type = OP_POWER
 		tok.Literal = string(l.char)
 	case '%':
-		tok.Type = MODULO
+		tok.Type = OP_MODULO
 		tok.Literal = string(l.char)
 	case '@':
 		return l.readPtrDeref()
@@ -313,7 +313,7 @@ func (l *Lexer) NextToken() Token {
 			tok.Type = NEQ
 			tok.Literal = string(char) + string(l.char)
 		} else {
-			tok.Type = NOT
+			tok.Type = OP_NOT
 			tok.Literal = string(l.char)
 		}
 	case '>':
@@ -342,7 +342,7 @@ func (l *Lexer) NextToken() Token {
 		if l.peekChar() == '&' {
 			char := l.char
 			l.readChar()
-			tok.Type = AND
+			tok.Type = OP_AND
 			tok.Literal = string(char) + string(l.char)
 		} else {
 			tok.Type = ILLEGAL
@@ -353,7 +353,7 @@ func (l *Lexer) NextToken() Token {
 			char := l.char
 			// consume next char
 			l.readChar()
-			tok.Type = OR
+			tok.Type = OP_OR
 			tok.Literal = string(char) + string(l.char)
 		} else {
 			tok.Type = ILLEGAL
@@ -364,6 +364,9 @@ func (l *Lexer) NextToken() Token {
 		tok.Literal = string(l.char)
 	case ']':
 		tok.Type = RBRACKET
+		tok.Literal = string(l.char)
+	case ',':
+		tok.Type = COMMA
 		tok.Literal = string(l.char)
 	case '"':
 		tok.Literal, tok.Type = l.readString()

@@ -1,0 +1,25 @@
+# using array method to get the size of an array
+["My", "name", "is", "Joshua"] array =
+$array->sizeof arr_length =
+$arr_length print
+
+# using string method to get the length of a string
+"My name is Joshua" string =
+$string->length str_length =
+$str_length print
+
+# using string method to convert a string to uppercase
+"Hello, World!" greet_string =
+$greet_string->upper upper_greet =
+$upper_greet print
+
+# using array method to reverse an array
+[1, 2, 3, 4, 5] num_array =
+$num_array->reverse reversed_array =
+$reversed_array print
+
+# using string method to check if a string contains a substring
+"Hello, World!" main_string =
+"World" sub_string =
+$main_string->contains $sub_string contains_result =
+$contains_result print

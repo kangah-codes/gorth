@@ -17,6 +17,9 @@ func main() {
 		"Hello, World!" dump
 
 		|| $name $fuck123 12.89 pi 3.14 =
+		[$name, "hello", fuck] $meow =
+		["My", "name", "is", "Joshua"] array =
+		
 	`
 
 	// Create lexer
