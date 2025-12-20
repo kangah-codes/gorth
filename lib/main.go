@@ -10,16 +10,7 @@ import (
 func main() {
 	// Test input - modify this to test different code
 	input := `
-		"Hello, World!" print drop
-
-		# or this, if in strict mode
-
-		"Hello, World!" dump
-
-		|| $name $fuck123 12.89 pi 3.14 =
-		[$name, "hello", fuck] $meow =
-		["My", "name", "is", "Joshua"] array =
-		
+		$variable
 	`
 
 	// Create lexer

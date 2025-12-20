@@ -137,8 +137,10 @@ func (l *Lexer) readVariable() (string, TokenType) {
 	r, _ := l.readChar()
 	l.position.Column++
 
+	fmt.Println(literal, r)
+
 	if !unicode.IsLetter(r) {
-		panic(fmt.Errorf("variable must start with $ followed by a letter at line %d column %d", l.position.Line, l.position.Column))
+		return literal, ILLEGAL
 	}
 
 	literal += string(r)
@@ -281,7 +283,7 @@ func (l *Lexer) NextToken() Token {
 		if unicode.IsDigit(l.peekChar()) {
 			return l.readPtr()
 		}
-		// else it's just a multiple
+		// else it's just a multiply
 		tok.Type = OP_MULTIPLY
 	case '/':
 		tok.Type = OP_DIVIDE

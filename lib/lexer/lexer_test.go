@@ -589,11 +589,228 @@ func TestClassifyIdent(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			reader := strings.NewReader(tt.input)
 			lexer := NewLexer(reader)
-
 			tokType := lexer.classifyIdent(tt.input)
 
 			if tokType != tt.expectedToken {
 				t.Errorf("classifyIdent() expected %s got %s", tt.expectedToken, tokType)
+			}
+		})
+	}
+}
+
+func TestReadIdent(t *testing.T) {
+	tests := []struct {
+		name              string
+		input             string
+		expectedLiteral   string
+		expectedTokenType TokenType
+	}{
+		{
+			name:              "return correct literal and tokentype for boolean input",
+			input:             "true",
+			expectedLiteral:   "true",
+			expectedTokenType: BOOL,
+		},
+		{
+			name:              "return correct literal and tokentype for keyword input",
+			input:             "dump",
+			expectedLiteral:   "dump",
+			expectedTokenType: OP_DUMP,
+		},
+		{
+			name:              "return correct literal and tokentype for illegal input",
+			input:             "mala",
+			expectedLiteral:   "mala",
+			expectedTokenType: ILLEGAL,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reader := strings.NewReader(tt.input)
+			lexer := NewLexer(reader)
+			lit, tokType := lexer.readIdent()
+
+			if lit != tt.expectedLiteral {
+				t.Errorf("readIdent() literal expected %s got %s", tt.expectedLiteral, lit)
+			}
+
+			if tokType != tt.expectedTokenType {
+				t.Errorf("readIdent() tokenType expected %s got %s", tt.expectedTokenType, tokType)
+			}
+		})
+	}
+}
+
+func TestReadVariable(t *testing.T) {
+	tests := []struct {
+		name              string
+		input             string
+		expectedLiteral   string
+		expectedTokenType TokenType
+		shouldPanic       bool
+	}{
+		{
+			name:              "valid simple variable",
+			input:             "$variable",
+			expectedLiteral:   "$variable",
+			expectedTokenType: VARIABLE,
+		},
+		{
+			name:              "valid variable with numbers",
+			input:             "$var123",
+			expectedLiteral:   "$var123",
+			expectedTokenType: VARIABLE,
+		},
+		{
+			name:              "valid single letter variable",
+			input:             "$a",
+			expectedLiteral:   "$a",
+			expectedTokenType: VARIABLE,
+		},
+		{
+			name:              "valid variable with mixed case",
+			input:             "$MyVariable",
+			expectedLiteral:   "$MyVariable",
+			expectedTokenType: VARIABLE,
+		},
+		{
+			name:              "valid variable ending with number",
+			input:             "$test123",
+			expectedLiteral:   "$test123",
+			expectedTokenType: VARIABLE,
+		},
+		{
+			name:              "invalid variable starting with number",
+			input:             "$1variable",
+			expectedLiteral:   "$",
+			expectedTokenType: ILLEGAL,
+		},
+		{
+			name:              "invalid variable starting with symbol",
+			input:             "$@invalid",
+			expectedLiteral:   "$",
+			expectedTokenType: ILLEGAL,
+		},
+		{
+			name:              "invalid variable with only dollar sign",
+			input:             "$ ",
+			expectedLiteral:   "$",
+			expectedTokenType: ILLEGAL,
+		},
+		{
+			name:              "valid variable followed by space",
+			input:             "$var ",
+			expectedLiteral:   "$var",
+			expectedTokenType: VARIABLE,
+		},
+		{
+			name:              "valid variable followed by symbol",
+			input:             "$var+",
+			expectedLiteral:   "$var",
+			expectedTokenType: VARIABLE,
+		},
+		{
+			name:              "valid variable at end of input",
+			input:             "$test",
+			expectedLiteral:   "$test",
+			expectedTokenType: VARIABLE,
+		},
+		{
+			name:              "invalid variable with underscore",
+			input:             "$var_name",
+			expectedLiteral:   "$var",
+			expectedTokenType: VARIABLE,
+		},
+		{
+			name:              "valid unicode variable",
+			input:             "$αβγ",
+			expectedLiteral:   "$αβγ",
+			expectedTokenType: VARIABLE,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reader := strings.NewReader(tt.input)
+			lexer := NewLexer(reader)
+
+			if tt.shouldPanic {
+				defer func() {
+					if r := recover(); r == nil {
+						t.Errorf("readVariable() expected to panic but didn't")
+					}
+				}()
+			}
+
+			lit, tokType := lexer.readVariable()
+
+			if !tt.shouldPanic {
+				if lit != tt.expectedLiteral {
+					t.Errorf("readVariable() literal = %s, want %s", lit, tt.expectedLiteral)
+				}
+
+				if tokType != tt.expectedTokenType {
+					t.Errorf("readVariable() tokenType = %s, want %s", tokType, tt.expectedTokenType)
+				}
+
+				// verify the lexer's current character is set correctly
+				if tt.expectedTokenType == VARIABLE && len(tt.input) > len(tt.expectedLiteral) {
+					expectedNextChar := rune(tt.input[len(tt.expectedLiteral)])
+					if lexer.char != expectedNextChar {
+						t.Errorf("readVariable() left lexer.char = %c, want %c", lexer.char, expectedNextChar)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestReadString(t *testing.T) {
+	tests := []struct {
+		name              string
+		input             string
+		expectedLiteral   string
+		expectedTokenType TokenType
+		shouldPanic       bool
+	}{
+		{
+			name:              "return correct literal and tokentype for valid variable input",
+			input:             `"Hello, world"`,
+			expectedLiteral:   "Hello, world",
+			expectedTokenType: STRING,
+		},
+		{
+			name:              "return correct literal and tokentype for valid variable input",
+			input:             `1`,
+			expectedLiteral:   "Hello, world",
+			expectedTokenType: STRING,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reader := strings.NewReader(tt.input)
+			lexer := NewLexer(reader)
+
+			if tt.shouldPanic {
+				defer func() {
+					if r := recover(); r == nil {
+						t.Errorf("readVariable() expected to panic but didn't")
+					}
+				}()
+			}
+
+			lit, tokType := lexer.readString()
+
+			if !tt.shouldPanic {
+				if lit != tt.expectedLiteral {
+					t.Errorf("readString() literal expected %s got %s", tt.expectedLiteral, lit)
+				}
+
+				if tokType != tt.expectedTokenType {
+					t.Errorf("readString() tokenType expected %s got %s", tt.expectedTokenType, tokType)
+				}
 			}
 		})
 	}
