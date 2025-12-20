@@ -186,8 +186,7 @@ func (l *Lexer) readString() (string, TokenType) {
 		}
 
 		if l.char == '\n' {
-			// TODO: language design, should we allow multiline strings like these? maybe not
-			// l.jumpToNextLine()
+			// Multiline strings are not allowed in gorth
 			panic(fmt.Errorf("unterminated string before newline at line %d column %d", l.position.Line, l.position.Column))
 		} else {
 			l.position.Column++

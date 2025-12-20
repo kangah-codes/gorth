@@ -1,6 +1,7 @@
 package lexer
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -773,18 +774,59 @@ func TestReadString(t *testing.T) {
 		expectedLiteral   string
 		expectedTokenType TokenType
 		shouldPanic       bool
+		expectedError     string
 	}{
 		{
-			name:              "return correct literal and tokentype for valid variable input",
+			name:              "valid simple string",
 			input:             `"Hello, world"`,
 			expectedLiteral:   "Hello, world",
 			expectedTokenType: STRING,
+			shouldPanic:       false,
 		},
 		{
-			name:              "return correct literal and tokentype for valid variable input",
-			input:             `1`,
-			expectedLiteral:   "Hello, world",
+			name:              "valid empty string",
+			input:             `""`,
+			expectedLiteral:   "",
 			expectedTokenType: STRING,
+			shouldPanic:       false,
+		},
+		{
+			name:              "valid string with numbers",
+			input:             `"test123"`,
+			expectedLiteral:   "test123",
+			expectedTokenType: STRING,
+			shouldPanic:       false,
+		},
+		{
+			name:              "valid string with special characters",
+			input:             `"!@#$%^&*()"`,
+			expectedLiteral:   "!@#$%^&*()",
+			expectedTokenType: STRING,
+			shouldPanic:       false,
+		},
+		{
+			name:              "string with newline should panic - multiline strings not allowed",
+			input:             "\"Hello\nWorld\"",
+			expectedLiteral:   "",
+			expectedTokenType: STRING,
+			shouldPanic:       true,
+			expectedError:     "unterminated string before newline",
+		},
+		{
+			name:              "unterminated string at EOF should panic",
+			input:             `"Hello`,
+			expectedLiteral:   "",
+			expectedTokenType: STRING,
+			shouldPanic:       true,
+			expectedError:     "unterminated string",
+		},
+		{
+			name:              "string with only newline should panic",
+			input:             "\"\n\"",
+			expectedLiteral:   "",
+			expectedTokenType: STRING,
+			shouldPanic:       true,
+			expectedError:     "unterminated string before newline",
 		},
 	}
 
@@ -796,7 +838,12 @@ func TestReadString(t *testing.T) {
 			if tt.shouldPanic {
 				defer func() {
 					if r := recover(); r == nil {
-						t.Errorf("readVariable() expected to panic but didn't")
+						t.Errorf("readString() expected to panic but didn't")
+					} else if tt.expectedError != "" {
+						errMsg := fmt.Sprint(r)
+						if !strings.Contains(errMsg, tt.expectedError) {
+							t.Errorf("readString() panic message = %v, expected to contain %v", errMsg, tt.expectedError)
+						}
 					}
 				}()
 			}
