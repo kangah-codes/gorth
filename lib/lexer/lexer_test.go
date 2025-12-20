@@ -1,6 +1,7 @@
 package lexer
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -773,18 +774,66 @@ func TestReadString(t *testing.T) {
 		expectedLiteral   string
 		expectedTokenType TokenType
 		shouldPanic       bool
+		panicMsg          string
 	}{
 		{
-			name:              "return correct literal and tokentype for valid variable input",
+			name:              "valid simple string",
 			input:             `"Hello, world"`,
 			expectedLiteral:   "Hello, world",
 			expectedTokenType: STRING,
+			shouldPanic:       false,
 		},
 		{
-			name:              "return correct literal and tokentype for valid variable input",
-			input:             `1`,
-			expectedLiteral:   "Hello, world",
+			name:              "valid empty string",
+			input:             `""`,
+			expectedLiteral:   "",
 			expectedTokenType: STRING,
+			shouldPanic:       false,
+		},
+		{
+			name:              "valid string with spaces",
+			input:             `"   spaces   "`,
+			expectedLiteral:   "   spaces   ",
+			expectedTokenType: STRING,
+			shouldPanic:       false,
+		},
+		{
+			name:              "valid string with special characters",
+			input:             `"Hello! @#$%^&*()"`,
+			expectedLiteral:   "Hello! @#$%^&*()",
+			expectedTokenType: STRING,
+			shouldPanic:       false,
+		},
+		{
+			name:              "valid string with numbers",
+			input:             `"Test123"`,
+			expectedLiteral:   "Test123",
+			expectedTokenType: STRING,
+			shouldPanic:       false,
+		},
+		{
+			name:        "multiline string not allowed - panic on newline",
+			input:       "\"Hello\nWorld\"",
+			shouldPanic: true,
+			panicMsg:    "unterminated string before newline",
+		},
+		{
+			name:        "unterminated string at EOF",
+			input:       `"Hello`,
+			shouldPanic: true,
+			panicMsg:    "unterminated string at line",
+		},
+		{
+			name:        "string with newline at start",
+			input:       "\"\ntest\"",
+			shouldPanic: true,
+			panicMsg:    "unterminated string before newline",
+		},
+		{
+			name:        "string with newline in middle",
+			input:       "\"test\nmiddle\"",
+			shouldPanic: true,
+			panicMsg:    "unterminated string before newline",
 		},
 	}
 
@@ -796,7 +845,12 @@ func TestReadString(t *testing.T) {
 			if tt.shouldPanic {
 				defer func() {
 					if r := recover(); r == nil {
-						t.Errorf("readVariable() expected to panic but didn't")
+						t.Errorf("readString() expected to panic but didn't")
+					} else if tt.panicMsg != "" {
+						errMsg := fmt.Sprintf("%v", r)
+						if !strings.Contains(errMsg, tt.panicMsg) {
+							t.Errorf("readString() panic message = %v, want to contain %v", errMsg, tt.panicMsg)
+						}
 					}
 				}()
 			}
