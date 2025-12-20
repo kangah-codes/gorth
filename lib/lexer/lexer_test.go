@@ -781,28 +781,24 @@ func TestReadString(t *testing.T) {
 			input:             `"Hello, world"`,
 			expectedLiteral:   "Hello, world",
 			expectedTokenType: STRING,
-			shouldPanic:       false,
 		},
 		{
 			name:              "valid empty string",
 			input:             `""`,
 			expectedLiteral:   "",
 			expectedTokenType: STRING,
-			shouldPanic:       false,
 		},
 		{
 			name:              "valid string with numbers",
 			input:             `"test123"`,
 			expectedLiteral:   "test123",
 			expectedTokenType: STRING,
-			shouldPanic:       false,
 		},
 		{
 			name:              "valid string with special characters",
 			input:             `"!@#$%^&*()"`,
 			expectedLiteral:   "!@#$%^&*()",
 			expectedTokenType: STRING,
-			shouldPanic:       false,
 		},
 		{
 			name:              "string with newline should panic - multiline strings not allowed",
