@@ -225,11 +225,15 @@ func (l *Lexer) readSinglelineString() (string, TokenType, error) {
 			break
 		}
 
+		// Multiline strings are not allowed in Gorth
+		// String literals must be closed on the same line they are opened
 		if l.char == '\n' {
 			return literal, ILLEGAL, fmt.Errorf("unterminated string before newline at line %d column %d", l.position.Line, l.position.Column)
 		} else {
 			l.jumpToNextColumn()
 		}
+
+		l.position.Column++
 
 		literal += string(l.char)
 		l.char, _ = l.readChar()
