@@ -1,7 +1,7 @@
 package goruntime
 
-import "gorth/lexer"
+import "gorth/parser"
 
 type GorthRuntime struct {
-	stack []lexer.StackElement
+	stack []parser.Node
 }

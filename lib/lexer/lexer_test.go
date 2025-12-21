@@ -273,7 +273,11 @@ func TestPeekChar(t *testing.T) {
 			originalPos := lexer.position
 
 			// Peek the next character
-			peeked := lexer.peekChar()
+			peeked, err := lexer.peekChar()
+
+			if err != nil {
+				t.Errorf("peekChar() threw unexpected error: %v", err)
+			}
 
 			// Verify peek result
 			if peeked != tt.expectedPeek {
@@ -629,7 +633,11 @@ func TestReadIdent(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			reader := strings.NewReader(tt.input)
 			lexer := NewLexer(reader)
-			lit, tokType := lexer.readIdent()
+			lit, tokType, err := lexer.readIdent()
+
+			if err != nil {
+				t.Errorf("readIdent() returned error unexpectedly %v", err)
+			}
 
 			if lit != tt.expectedLiteral {
 				t.Errorf("readIdent() literal expected %s got %s", tt.expectedLiteral, lit)
@@ -735,56 +743,149 @@ func TestReadVariable(t *testing.T) {
 			reader := strings.NewReader(tt.input)
 			lexer := NewLexer(reader)
 
-			if tt.shouldPanic {
-				defer func() {
-					if r := recover(); r == nil {
-						t.Errorf("readVariable() expected to panic but didn't")
-					}
-				}()
+			lit, tokType, err := lexer.readVariable()
+
+			if err != nil {
+				t.Errorf("readVariable() returned unexpected error %v", err)
 			}
 
-			lit, tokType := lexer.readVariable()
+			if lit != tt.expectedLiteral {
+				t.Errorf("readVariable() literal = %s, want %s", lit, tt.expectedLiteral)
+			}
 
-			if !tt.shouldPanic {
-				if lit != tt.expectedLiteral {
-					t.Errorf("readVariable() literal = %s, want %s", lit, tt.expectedLiteral)
-				}
+			if tokType != tt.expectedTokenType {
+				t.Errorf("readVariable() tokenType = %s, want %s", tokType, tt.expectedTokenType)
+			}
 
-				if tokType != tt.expectedTokenType {
-					t.Errorf("readVariable() tokenType = %s, want %s", tokType, tt.expectedTokenType)
-				}
-
-				// verify the lexer's current character is set correctly
-				if tt.expectedTokenType == VARIABLE && len(tt.input) > len(tt.expectedLiteral) {
-					expectedNextChar := rune(tt.input[len(tt.expectedLiteral)])
-					if lexer.char != expectedNextChar {
-						t.Errorf("readVariable() left lexer.char = %c, want %c", lexer.char, expectedNextChar)
-					}
+			// verify the lexer's current character is set correctly
+			if tt.expectedTokenType == VARIABLE && len(tt.input) > len(tt.expectedLiteral) {
+				expectedNextChar := rune(tt.input[len(tt.expectedLiteral)])
+				if lexer.char != expectedNextChar {
+					t.Errorf("readVariable() left lexer.char = %c, want %c", lexer.char, expectedNextChar)
 				}
 			}
 		})
 	}
 }
 
-func TestReadString(t *testing.T) {
+func TestReadSinglelineString(t *testing.T) {
 	tests := []struct {
 		name              string
 		input             string
 		expectedLiteral   string
 		expectedTokenType TokenType
-		shouldPanic       bool
+		wantError         bool
+		errorContains     string
 	}{
 		{
-			name:              "return correct literal and tokentype for valid variable input",
-			input:             `"Hello, world"`,
-			expectedLiteral:   "Hello, world",
+			name:              "valid empty string",
+			input:             `""`,
+			expectedLiteral:   "",
 			expectedTokenType: STRING,
+			wantError:         false,
 		},
 		{
-			name:              "return correct literal and tokentype for valid variable input",
-			input:             `1`,
-			expectedLiteral:   "Hello, world",
+			name:              "valid simple string",
+			input:             `"hello"`,
+			expectedLiteral:   "hello",
 			expectedTokenType: STRING,
+			wantError:         false,
+		},
+		{
+			name:              "valid string with spaces",
+			input:             `"hello world"`,
+			expectedLiteral:   "hello world",
+			expectedTokenType: STRING,
+			wantError:         false,
+		},
+		{
+			name:              "valid string with numbers",
+			input:             `"test123"`,
+			expectedLiteral:   "test123",
+			expectedTokenType: STRING,
+			wantError:         false,
+		},
+		{
+			name:              "valid string with symbols",
+			input:             `"hello!@#$%^&*()"`,
+			expectedLiteral:   "hello!@#$%^&*()",
+			expectedTokenType: STRING,
+			wantError:         false,
+		},
+		{
+			name:              "valid string with unicode",
+			input:             `"αβγδε"`,
+			expectedLiteral:   "αβγδε",
+			expectedTokenType: STRING,
+			wantError:         false,
+		},
+		{
+			name:              "valid string with tabs",
+			input:             "\"hello\tworld\"",
+			expectedLiteral:   "hello\tworld",
+			expectedTokenType: STRING,
+			wantError:         false,
+		},
+		{
+			name:              "unterminated string at EOF",
+			input:             `"hello`,
+			expectedLiteral:   "hello",
+			expectedTokenType: ILLEGAL,
+			wantError:         true,
+			errorContains:     "unterminated string at line",
+		},
+		{
+			name:              "unterminated string with content at EOF",
+			input:             `"hello world`,
+			expectedLiteral:   "hello world",
+			expectedTokenType: ILLEGAL,
+			wantError:         true,
+			errorContains:     "unterminated string at line",
+		},
+		{
+			name:              "string with newline",
+			input:             "\"hello\nworld\"",
+			expectedLiteral:   "hello",
+			expectedTokenType: ILLEGAL,
+			wantError:         true,
+			errorContains:     "unterminated string before newline",
+		},
+		{
+			name:              "string ending with newline",
+			input:             "\"hello\n",
+			expectedLiteral:   "hello",
+			expectedTokenType: ILLEGAL,
+			wantError:         true,
+			errorContains:     "unterminated string before newline",
+		},
+		{
+			name:              "empty string with newline",
+			input:             "\"\n",
+			expectedLiteral:   "",
+			expectedTokenType: ILLEGAL,
+			wantError:         true,
+			errorContains:     "unterminated string before newline",
+		},
+		{
+			name:              "valid string followed by text",
+			input:             `"hello"world`,
+			expectedLiteral:   "hello",
+			expectedTokenType: STRING,
+			wantError:         false,
+		},
+		{
+			name:              "string with single character",
+			input:             `"a"`,
+			expectedLiteral:   "a",
+			expectedTokenType: STRING,
+			wantError:         false,
+		},
+		{
+			name:              "string with multiple quotes inside not supported",
+			input:             `"say "hello""`,
+			expectedLiteral:   "say ",
+			expectedTokenType: STRING,
+			wantError:         false,
 		},
 	}
 
@@ -793,25 +894,642 @@ func TestReadString(t *testing.T) {
 			reader := strings.NewReader(tt.input)
 			lexer := NewLexer(reader)
 
-			if tt.shouldPanic {
-				defer func() {
-					if r := recover(); r == nil {
-						t.Errorf("readVariable() expected to panic but didn't")
-					}
-				}()
+			lit, tokType, err := lexer.readSinglelineString()
+
+			if tt.wantError {
+				if err == nil {
+					t.Errorf("readSinglelineString() expected error but got none")
+				} else if tt.errorContains != "" && !strings.Contains(err.Error(), tt.errorContains) {
+					t.Errorf("readSinglelineString() error = %v, want error containing %s", err, tt.errorContains)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("readSinglelineString() unexpected error = %v", err)
+				}
 			}
 
-			lit, tokType := lexer.readString()
+			if lit != tt.expectedLiteral {
+				t.Errorf("readSinglelineString() literal = %s, want %s", lit, tt.expectedLiteral)
+			}
 
-			if !tt.shouldPanic {
-				if lit != tt.expectedLiteral {
-					t.Errorf("readString() literal expected %s got %s", tt.expectedLiteral, lit)
+			if tokType != tt.expectedTokenType {
+				t.Errorf("readSinglelineString() tokenType = %s, want %s", tokType, tt.expectedTokenType)
+			}
+		})
+	}
+}
+
+func TestReadMultilineString(t *testing.T) {
+	tests := []struct {
+		name              string
+		input             string
+		expectedLiteral   string
+		expectedTokenType TokenType
+		wantError         bool
+		errorContains     string
+	}{
+		{
+			name:              "valid empty string",
+			input:             "``",
+			expectedLiteral:   "",
+			expectedTokenType: STRING,
+			wantError:         false,
+		},
+		{
+			name:              "valid simple string",
+			input:             "`hello`",
+			expectedLiteral:   "hello",
+			expectedTokenType: STRING,
+			wantError:         false,
+		},
+		{
+			name:              "valid string with spaces",
+			input:             "`hello world`",
+			expectedLiteral:   "hello world",
+			expectedTokenType: STRING,
+			wantError:         false,
+		},
+		{
+			name:              "valid string with numbers",
+			input:             "`test123`",
+			expectedLiteral:   "test123",
+			expectedTokenType: STRING,
+			wantError:         false,
+		},
+		{
+			name:              "valid string with symbols",
+			input:             "`hello!@#$%^&*()`",
+			expectedLiteral:   "hello!@#$%^&*()",
+			expectedTokenType: STRING,
+			wantError:         false,
+		},
+		{
+			name:              "valid string with unicode",
+			input:             "`αβγδε`",
+			expectedLiteral:   "αβγδε",
+			expectedTokenType: STRING,
+			wantError:         false,
+		},
+		{
+			name:              "valid string with tabs",
+			input:             "`hello\tworld`",
+			expectedLiteral:   "hello\tworld",
+			expectedTokenType: STRING,
+			wantError:         false,
+		},
+		{
+			name:              "valid multiline string",
+			input:             "`hello\nworld`",
+			expectedLiteral:   "hello\nworld",
+			expectedTokenType: STRING,
+			wantError:         false,
+		},
+		{
+			name:              "valid multiline string with multiple newlines",
+			input:             "`line1\nline2\nline3`",
+			expectedLiteral:   "line1\nline2\nline3",
+			expectedTokenType: STRING,
+			wantError:         false,
+		},
+		{
+			name:              "valid multiline string with carriage returns",
+			input:             "`line1\r\nline2`",
+			expectedLiteral:   "line1\r\nline2",
+			expectedTokenType: STRING,
+			wantError:         false,
+		},
+		{
+			name:              "unterminated string at EOF",
+			input:             "`hello",
+			expectedLiteral:   "",
+			expectedTokenType: ILLEGAL,
+			wantError:         true,
+			errorContains:     "unterminated string at line",
+		},
+		{
+			name:              "unterminated multiline string with content at EOF",
+			input:             "`hello\nworld",
+			expectedLiteral:   "",
+			expectedTokenType: ILLEGAL,
+			wantError:         true,
+			errorContains:     "unterminated string at line",
+		},
+		{
+			name:              "unterminated empty string at EOF",
+			input:             "`",
+			expectedLiteral:   "",
+			expectedTokenType: ILLEGAL,
+			wantError:         true,
+			errorContains:     "unterminated string at line",
+		},
+		{
+			name:              "valid string followed by text",
+			input:             "`hello`world",
+			expectedLiteral:   "hello",
+			expectedTokenType: STRING,
+			wantError:         false,
+		},
+		{
+			name:              "string with single character",
+			input:             "`a`",
+			expectedLiteral:   "a",
+			expectedTokenType: STRING,
+			wantError:         false,
+		},
+		{
+			name:              "string with backtick inside (ends at first backtick)",
+			input:             "`say `hello``",
+			expectedLiteral:   "say ",
+			expectedTokenType: STRING,
+			wantError:         false,
+		},
+		{
+			name:              "multiline string with empty lines",
+			input:             "`line1\n\nline3`",
+			expectedLiteral:   "line1\n\nline3",
+			expectedTokenType: STRING,
+			wantError:         false,
+		},
+		{
+			name:              "string with only newlines",
+			input:             "`\n\n\n`",
+			expectedLiteral:   "\n\n\n",
+			expectedTokenType: STRING,
+			wantError:         false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reader := strings.NewReader(tt.input)
+			lexer := NewLexer(reader)
+
+			lit, tokType, err := lexer.readMultilineString()
+
+			if tt.wantError {
+				if err == nil {
+					t.Errorf("readMultilineString() expected error but got none")
+				} else if tt.errorContains != "" && !strings.Contains(err.Error(), tt.errorContains) {
+					t.Errorf("readMultilineString() error = %v, want error containing %s", err, tt.errorContains)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("readMultilineString() unexpected error = %v", err)
+				}
+			}
+
+			if lit != tt.expectedLiteral {
+				t.Errorf("readMultilineString() literal = %s, want %s", lit, tt.expectedLiteral)
+			}
+
+			if tokType != tt.expectedTokenType {
+				t.Errorf("readMultilineString() tokenType = %s, want %s", tokType, tt.expectedTokenType)
+			}
+		})
+	}
+}
+func TestReadNumber(t *testing.T) {
+	tests := []struct {
+		name              string
+		input             string
+		expectedLiteral   string
+		expectedTokenType TokenType
+		wantError         bool
+		errorContains     string
+	}{
+		{
+			name:              "single digit integer",
+			input:             "5",
+			expectedLiteral:   "5",
+			expectedTokenType: INT,
+			wantError:         false,
+		},
+		{
+			name:              "multiple digit integer",
+			input:             "123",
+			expectedLiteral:   "123",
+			expectedTokenType: INT,
+			wantError:         false,
+		},
+		{
+			name:              "integer followed by space",
+			input:             "42 ",
+			expectedLiteral:   "42",
+			expectedTokenType: INT,
+			wantError:         false,
+		},
+		{
+			name:              "integer followed by operator",
+			input:             "99+",
+			expectedLiteral:   "99",
+			expectedTokenType: INT,
+			wantError:         false,
+		},
+		{
+			name:              "simple float",
+			input:             "3.14",
+			expectedLiteral:   "3.14",
+			expectedTokenType: FLOAT,
+			wantError:         false,
+		},
+		{
+			name:              "float starting with zero",
+			input:             "0.5",
+			expectedLiteral:   "0.5",
+			expectedTokenType: FLOAT,
+			wantError:         false,
+		},
+		{
+			name:              "float with multiple decimal places",
+			input:             "123.456789",
+			expectedLiteral:   "123.456789",
+			expectedTokenType: FLOAT,
+			wantError:         false,
+		},
+		{
+			name:              "float followed by space",
+			input:             "2.5 ",
+			expectedLiteral:   "2.5",
+			expectedTokenType: FLOAT,
+			wantError:         false,
+		},
+		{
+			name:              "integer at end of input",
+			input:             "999",
+			expectedLiteral:   "999",
+			expectedTokenType: INT,
+			wantError:         false,
+		},
+		{
+			name:              "float at end of input",
+			input:             "1.618",
+			expectedLiteral:   "1.618",
+			expectedTokenType: FLOAT,
+			wantError:         false,
+		},
+		{
+			name:              "zero integer",
+			input:             "0",
+			expectedLiteral:   "0",
+			expectedTokenType: INT,
+			wantError:         false,
+		},
+		{
+			name:              "number with multiple decimal points",
+			input:             "1.2.3",
+			expectedLiteral:   "1.2",
+			expectedTokenType: ILLEGAL,
+			wantError:         true,
+			errorContains:     "unexpected decimal point",
+		},
+		{
+			name:              "number with symbol after digit",
+			input:             "123@",
+			expectedLiteral:   "123",
+			expectedTokenType: INT,
+			wantError:         false,
+		},
+		{
+			name:              "number with punctuation after digit",
+			input:             "456!",
+			expectedLiteral:   "456",
+			expectedTokenType: INT,
+			wantError:         false,
+		},
+		{
+			name:              "large integer",
+			input:             "9876543210",
+			expectedLiteral:   "9876543210",
+			expectedTokenType: INT,
+			wantError:         false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reader := strings.NewReader(tt.input)
+			lexer := NewLexer(reader)
+
+			lit, tokType, err := lexer.readNumber()
+
+			if tt.wantError {
+				if err == nil {
+					t.Errorf("readNumber() expected error but got none")
+				} else if tt.errorContains != "" && !strings.Contains(err.Error(), tt.errorContains) {
+					t.Errorf("readNumber() error = %v, want error containing %s", err, tt.errorContains)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("readNumber() unexpected error = %v", err)
+				}
+			}
+
+			if lit != tt.expectedLiteral {
+				t.Errorf("readNumber() literal = %s, want %s", lit, tt.expectedLiteral)
+			}
+
+			if tokType != tt.expectedTokenType {
+				t.Errorf("readNumber() tokenType = %s, want %s", tokType, tt.expectedTokenType)
+			}
+		})
+	}
+}
+
+func TestNextToken(t *testing.T) {
+	tests := []struct {
+		name           string
+		input          string
+		expectedTokens []Token
+	}{
+		{
+			name:  "EOF token",
+			input: "",
+			expectedTokens: []Token{
+				{Type: EOF, Literal: "", Pos: Position{Line: 1, Column: 1}},
+			},
+		},
+		{
+			name:  "simple arithmetic operators",
+			input: "+ - * / ^ %",
+			expectedTokens: []Token{
+				{Type: OP_PLUS, Literal: "+", Pos: Position{Line: 1, Column: 1}},
+				{Type: OP_MINUS, Literal: "-", Pos: Position{Line: 1, Column: 3}},
+				{Type: OP_MULTIPLY, Literal: "*", Pos: Position{Line: 1, Column: 5}},
+				{Type: OP_DIVIDE, Literal: "/", Pos: Position{Line: 1, Column: 7}},
+				{Type: OP_POWER, Literal: "^", Pos: Position{Line: 1, Column: 9}},
+				{Type: OP_MODULO, Literal: "%", Pos: Position{Line: 1, Column: 11}},
+				{Type: EOF, Literal: "", Pos: Position{Line: 1, Column: 12}},
+			},
+		},
+		{
+			name:  "comparison operators",
+			input: "== != > < >= <=",
+			expectedTokens: []Token{
+				{Type: EQ, Literal: "==", Pos: Position{Line: 1, Column: 1}},
+				{Type: NEQ, Literal: "!=", Pos: Position{Line: 1, Column: 4}},
+				{Type: GT, Literal: ">", Pos: Position{Line: 1, Column: 7}},
+				{Type: LT, Literal: "<", Pos: Position{Line: 1, Column: 9}},
+				{Type: GTE, Literal: ">=", Pos: Position{Line: 1, Column: 11}},
+				{Type: LTE, Literal: "<=", Pos: Position{Line: 1, Column: 14}},
+				{Type: EOF, Literal: "", Pos: Position{Line: 1, Column: 16}},
+			},
+		},
+		{
+			name:  "logical operators",
+			input: "&& || !",
+			expectedTokens: []Token{
+				{Type: OP_AND, Literal: "&&", Pos: Position{Line: 1, Column: 1}},
+				{Type: OP_OR, Literal: "||", Pos: Position{Line: 1, Column: 4}},
+				{Type: OP_NOT, Literal: "!", Pos: Position{Line: 1, Column: 7}},
+				{Type: EOF, Literal: "", Pos: Position{Line: 1, Column: 8}},
+			},
+		},
+		{
+			name:  "assignment operator",
+			input: "=",
+			expectedTokens: []Token{
+				{Type: ASSIGN, Literal: "=", Pos: Position{Line: 1, Column: 1}},
+				{Type: EOF, Literal: "", Pos: Position{Line: 1, Column: 2}},
+			},
+		},
+		{
+			name:  "brackets and comma",
+			input: "[ ] ,",
+			expectedTokens: []Token{
+				{Type: LBRACKET, Literal: "[", Pos: Position{Line: 1, Column: 1}},
+				{Type: RBRACKET, Literal: "]", Pos: Position{Line: 1, Column: 3}},
+				{Type: COMMA, Literal: ",", Pos: Position{Line: 1, Column: 5}},
+				{Type: EOF, Literal: "", Pos: Position{Line: 1, Column: 6}},
+			},
+		},
+		{
+			name:  "string literals",
+			input: `"hello" "world"`,
+			expectedTokens: []Token{
+				{Type: STRING, Literal: "hello", Pos: Position{Line: 1, Column: 1}},
+				{Type: STRING, Literal: "world", Pos: Position{Line: 1, Column: 9}},
+				{Type: EOF, Literal: "", Pos: Position{Line: 1, Column: 16}},
+			},
+		},
+		{
+			name:  "variable",
+			input: "$myvar",
+			expectedTokens: []Token{
+				{Type: VARIABLE, Literal: "$myvar", Pos: Position{Line: 1, Column: 1}},
+				{Type: EOF, Literal: "", Pos: Position{Line: 1, Column: 7}},
+			},
+		},
+		{
+			name:  "identifiers and keywords",
+			input: "true false proc endproc",
+			expectedTokens: []Token{
+				{Type: BOOL, Literal: "true", Pos: Position{Line: 1, Column: 1}},
+				{Type: BOOL, Literal: "false", Pos: Position{Line: 1, Column: 6}},
+				{Type: PROC, Literal: "proc", Pos: Position{Line: 1, Column: 12}},
+				{Type: ENDPROC, Literal: "endproc", Pos: Position{Line: 1, Column: 17}},
+				{Type: EOF, Literal: "", Pos: Position{Line: 1, Column: 24}},
+			},
+		},
+		{
+			name:  "numbers",
+			input: "123 456.789",
+			expectedTokens: []Token{
+				{Type: INT, Literal: "123", Pos: Position{Line: 1, Column: 1}},
+				{Type: FLOAT, Literal: "456.789", Pos: Position{Line: 1, Column: 5}},
+				{Type: EOF, Literal: "", Pos: Position{Line: 1, Column: 12}},
+			},
+		},
+		{
+			name:  "comments are skipped",
+			input: "# this is a comment\ntrue",
+			expectedTokens: []Token{
+				{Type: BOOL, Literal: "true", Pos: Position{Line: 2, Column: 1}},
+				{Type: EOF, Literal: "", Pos: Position{Line: 2, Column: 5}},
+			},
+		},
+		{
+			name:  "whitespace handling",
+			input: "   \t\r\n   +   \n   -   ",
+			expectedTokens: []Token{
+				{Type: OP_PLUS, Literal: "+", Pos: Position{Line: 2, Column: 4}},
+				{Type: OP_MINUS, Literal: "-", Pos: Position{Line: 3, Column: 4}},
+				{Type: EOF, Literal: "", Pos: Position{Line: 3, Column: 8}},
+			},
+		},
+		{
+			name:  "single ampersand (illegal)",
+			input: "&",
+			expectedTokens: []Token{
+				{Type: ILLEGAL, Literal: "&", Pos: Position{Line: 1, Column: 1}},
+				{Type: EOF, Literal: "", Pos: Position{Line: 1, Column: 2}},
+			},
+		},
+		{
+			name:  "single pipe (illegal)",
+			input: "|",
+			expectedTokens: []Token{
+				{Type: ILLEGAL, Literal: "|", Pos: Position{Line: 1, Column: 1}},
+				{Type: EOF, Literal: "", Pos: Position{Line: 1, Column: 2}},
+			},
+		},
+		{
+			name:  "illegal characters",
+			input: "~` £",
+			expectedTokens: []Token{
+				{Type: ILLEGAL, Literal: "~", Pos: Position{Line: 1, Column: 1}},
+				{Type: ILLEGAL, Literal: "`", Pos: Position{Line: 1, Column: 2}},
+				{Type: ILLEGAL, Literal: "£", Pos: Position{Line: 1, Column: 4}},
+				{Type: EOF, Literal: "", Pos: Position{Line: 1, Column: 5}},
+			},
+		},
+		{
+			name:  "complex expression",
+			input: "$x $y + 42 ==",
+			expectedTokens: []Token{
+				{Type: VARIABLE, Literal: "$x", Pos: Position{Line: 1, Column: 1}},
+				{Type: VARIABLE, Literal: "$y", Pos: Position{Line: 1, Column: 4}},
+				{Type: OP_PLUS, Literal: "+", Pos: Position{Line: 1, Column: 7}},
+				{Type: INT, Literal: "42", Pos: Position{Line: 1, Column: 9}},
+				{Type: EQ, Literal: "==", Pos: Position{Line: 1, Column: 12}},
+				{Type: EOF, Literal: "", Pos: Position{Line: 1, Column: 13}},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reader := strings.NewReader(tt.input)
+			lexer := NewLexer(reader)
+
+			for i, expected := range tt.expectedTokens {
+				token, err := lexer.NextToken()
+				if err != nil {
+					t.Errorf("NextToken() returned unexpected error: %v", err)
+					continue
 				}
 
-				if tokType != tt.expectedTokenType {
-					t.Errorf("readString() tokenType expected %s got %s", tt.expectedTokenType, tokType)
+				if token.Type != expected.Type {
+					t.Errorf("Token %v: Type = %s, want %s", tt.expectedTokens[i], token.Type, expected.Type)
+				}
+
+				if token.Literal != expected.Literal {
+					t.Errorf("Token %v: Literal = %s, want %s", tt.expectedTokens[i], token.Literal, expected.Literal)
+				}
+
+				if token.Pos.Line != expected.Pos.Line {
+					t.Errorf("Token %v: Position.Line = %d, want %d", tt.expectedTokens[i], token.Pos.Line, expected.Pos.Line)
+				}
+
+				if token.Pos.Column != expected.Pos.Column {
+					t.Errorf("Token %v: Position.Column = %d, want %d", tt.expectedTokens[i], token.Pos.Column, expected.Pos.Column)
 				}
 			}
 		})
 	}
+}
+
+func TestJumpToNextColumn(t *testing.T) {
+	tests := []struct {
+		name        string
+		initialCol  int
+		expectedCol int
+	}{
+		{
+			name:        "jump from column 1",
+			initialCol:  1,
+			expectedCol: 2,
+		},
+		{
+			name:        "jump from column 10",
+			initialCol:  10,
+			expectedCol: 11,
+		},
+		{
+			name:        "jump from column 0",
+			initialCol:  0,
+			expectedCol: 1,
+		},
+		{
+			name:        "jump from large column number",
+			initialCol:  100,
+			expectedCol: 101,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reader := strings.NewReader("test")
+			lexer := NewLexer(reader)
+
+			// Set initial column
+			lexer.position.Column = tt.initialCol
+
+			// Call jumpToNextColumn
+			lexer.jumpToNextColumn()
+
+			// Check result
+			if lexer.position.Column != tt.expectedCol {
+				t.Errorf("jumpToNextColumn() Column = %d, want %d", lexer.position.Column, tt.expectedCol)
+			}
+
+			// Verify line number is unchanged
+			if lexer.position.Line != 1 {
+				t.Errorf("jumpToNextColumn() changed Line to %d, want 1", lexer.position.Line)
+			}
+		})
+	}
+}
+
+func TestNewPosition(t *testing.T) {
+	tests := []struct {
+		name         string
+		line         int
+		column       int
+		expectedLine int
+		expectedCol  int
+	}{
+		{
+			name:         "create position 1,1",
+			line:         1,
+			column:       1,
+			expectedLine: 1,
+			expectedCol:  1,
+		},
+		{
+			name:         "create position 5,10",
+			line:         5,
+			column:       10,
+			expectedLine: 5,
+			expectedCol:  10,
+		},
+		{
+			name:         "create position 0,0",
+			line:         0,
+			column:       0,
+			expectedLine: 0,
+			expectedCol:  0,
+		},
+		{
+			name:         "create position with large numbers",
+			line:         1000,
+			column:       2000,
+			expectedLine: 1000,
+			expectedCol:  2000,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pos := NewPosition(tt.line, tt.column)
+
+			if pos.Line != tt.expectedLine {
+				t.Errorf("NewPosition() Line = %d, want %d", pos.Line, tt.expectedLine)
+			}
+
+			if pos.Column != tt.expectedCol {
+				t.Errorf("NewPosition() Column = %d, want %d", pos.Column, tt.expectedCol)
+			}
+		})
+	}
+
 }

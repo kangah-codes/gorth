@@ -3,7 +3,6 @@ package parser
 import (
 	"fmt"
 	"gorth/lexer"
-	"strings"
 )
 
 type Parser struct {
@@ -38,7 +37,10 @@ func (p *Parser) nextToken() {
 	p.currentLiteral = p.peekLiteral
 	p.currentPosition = p.peekPosition
 
-	lexedToken := p.lexer.NextToken()
+	lexedToken, err := p.lexer.NextToken()
+	if err != nil {
+		panic("not implemented")
+	}
 
 	p.peekPosition = lexedToken.Pos
 	p.peekToken = lexedToken.Type
@@ -106,6 +108,9 @@ func (p *Parser) parseStatement() (Node, error) {
 	case lexer.ILLEGAL:
 		return nil, fmt.Errorf("illegal token at line %d, col %d: %s",
 			p.currentPosition.Line, p.currentPosition.Column, p.currentLiteral)
+	// array literal
+	case lexer.LBRACKET:
+		return p.parseArray()
 	default:
 		return nil, fmt.Errorf("unexpected token %s at line %d, col %d",
 			lexer.TokenMap[p.currentToken], p.currentPosition.Line, p.currentPosition.Column)
@@ -233,18 +238,39 @@ func (p *Parser) parsePtrDeref() (Node, error) {
 
 func (p *Parser) parseArray() (Node, error) {
 	elements := []Node{}
-	values := strings.Split(p.currentLiteral, ",")
+	pos := p.currentPosition
 
-	for _, v := range values {
-		v = strings.TrimSpace(v)
-		elements = append(elements, &StringLiteral{
-			Value:    v,
-			Position: p.currentPosition,
-		})
+	// Skip opening bracket [
+	p.nextToken()
+
+	// Parse elements until we hit closing bracket
+	for !p.currentTokenIs(lexer.RBRACKET) && !p.currentTokenIs(lexer.EOF) {
+		// Parse the element
+		elem, err := p.parseStatement()
+		if err != nil {
+			return nil, err
+		}
+		elements = append(elements, elem)
+
+		// Move to next token
+		p.nextToken()
+
+		// If it's a comma, skip it
+		if p.currentTokenIs(lexer.COMMA) {
+			p.nextToken()
+		} else if !p.currentTokenIs(lexer.RBRACKET) {
+			return nil, fmt.Errorf("expected ',' or ']' in array but got %s at line %d, col %d",
+				lexer.TokenMap[p.currentToken], p.currentPosition.Line, p.currentPosition.Column)
+		}
+	}
+
+	if !p.currentTokenIs(lexer.RBRACKET) {
+		return nil, fmt.Errorf("expected ']' to close array at line %d, col %d",
+			p.currentPosition.Line, p.currentPosition.Column)
 	}
 
 	return &ArrayLiteral{
 		Elements: elements,
-		Pos:      p.currentPosition,
+		Pos:      pos,
 	}, nil
 }

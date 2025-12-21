@@ -33,6 +33,10 @@ func (l *Lexer) jumpToNextLine() {
 	l.position.Column = 1
 }
 
+func (l *Lexer) jumpToNextColumn() {
+	l.position.Column++
+}
+
 func (l *Lexer) readChar() (rune, error) {
 	r, _, err := l.reader.ReadRune()
 
@@ -47,39 +51,38 @@ func (l *Lexer) readChar() (rune, error) {
 	return r, nil
 }
 
-func (l *Lexer) peekChar() rune {
+func (l *Lexer) peekChar() (rune, error) {
 	r, err := l.readChar()
 	if err != nil {
-		return 0
+		return 0, nil
 	}
 
 	if r != 0 {
 		if err := l.reader.UnreadRune(); err != nil {
-			// TODO: use gorth error here
-			panic(err)
+			return r, err
 		}
 	}
 
-	return r
+	return r, nil
 }
 
-func (l *Lexer) backup() {
+func (l *Lexer) backup() error {
 	if err := l.reader.UnreadRune(); err != nil {
-		// TODO: change this from panic
-		panic(err)
+		return err
 	}
 
 	// go back a column
 	l.position.Column--
+	return nil
 }
 
 // reads a pointer from the stack
-func (l *Lexer) readPtr() Token {
+func (l *Lexer) readPtr() (Token, error) {
 	panic("Not implemented")
 }
 
 // dereferences a pointer from the stack
-func (l *Lexer) readPtrDeref() Token {
+func (l *Lexer) readPtrDeref() (Token, error) {
 	panic("Not implemented")
 }
 
@@ -99,7 +102,7 @@ func (l *Lexer) classifyIdent(lit string) TokenType {
 }
 
 // read identifiers
-func (l *Lexer) readIdent() (string, TokenType) {
+func (l *Lexer) readIdent() (string, TokenType, error) {
 	var lit string
 
 	// Start with current character
@@ -111,17 +114,17 @@ func (l *Lexer) readIdent() (string, TokenType) {
 		if err != nil {
 			if err == io.EOF {
 				l.char = 0
-				return lit, l.classifyIdent(lit)
+				return lit, l.classifyIdent(lit), nil
 			}
-			panic(err)
+			return "", ILLEGAL, err
 		}
 
-		l.position.Column++
+		l.jumpToNextColumn()
 
 		// Stop reading when we hit a non-letter character
 		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
 			l.char = r
-			return lit, l.classifyIdent(lit)
+			return lit, l.classifyIdent(lit), nil
 		}
 
 		lit += string(r)
@@ -129,18 +132,20 @@ func (l *Lexer) readIdent() (string, TokenType) {
 }
 
 // read variable names from a sequence of chars
-func (l *Lexer) readVariable() (string, TokenType) {
+func (l *Lexer) readVariable() (string, TokenType, error) {
 	var literal string
 
 	literal = string(l.char)
 
-	r, _ := l.readChar()
-	l.position.Column++
+	r, err := l.readChar()
+	if err != nil {
+		return literal, ILLEGAL, err
+	}
 
-	fmt.Println(literal, r)
+	l.jumpToNextColumn()
 
 	if !unicode.IsLetter(r) {
-		return literal, ILLEGAL
+		return literal, ILLEGAL, nil
 	}
 
 	literal += string(r)
@@ -150,17 +155,17 @@ func (l *Lexer) readVariable() (string, TokenType) {
 		if err != nil {
 			if err == io.EOF {
 				l.char = 0
-				return literal, VARIABLE
+				return literal, VARIABLE, nil
 			}
 
-			panic(err)
+			return "", ILLEGAL, err
 		}
 
-		l.position.Column++
+		l.jumpToNextColumn()
 
 		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
 			l.char = r
-			return literal, VARIABLE
+			return literal, VARIABLE, nil
 		}
 
 		literal += string(r)
@@ -168,16 +173,51 @@ func (l *Lexer) readVariable() (string, TokenType) {
 }
 
 // reads strings from a sequence of chars starting with "
-func (l *Lexer) readString() (string, TokenType) {
+func (l *Lexer) readSinglelineString() (string, TokenType, error) {
 	var literal string
+	var err error
 
 	// skip opening quote
-	l.char, _ = l.readChar()
-	l.position.Column++
+	l.char, err = l.readChar()
+	if err != nil {
+		return literal, ILLEGAL, err
+	}
+
+	l.jumpToNextColumn()
 
 	for {
 		if l.char == 0 {
-			panic(fmt.Errorf("unterminated string at line %d column %d", l.position.Line, l.position.Column))
+			// TODO: use custom error here
+			return literal, ILLEGAL, fmt.Errorf("unterminated string at line %d column %d", l.position.Line, l.position.Column)
+		}
+
+		// handle escape sequences
+		if l.char == '\\' {
+			l.jumpToNextColumn()
+			l.char, err = l.readChar()
+			if err != nil {
+				return literal, ILLEGAL, err
+			}
+
+			// handle common escape sequences
+			switch l.char {
+			case 'n':
+				literal += "\n"
+			case 't':
+				literal += "\t"
+			case 'r':
+				literal += "\r"
+			case '"':
+				literal += "\""
+			case '\\':
+				literal += "\\"
+			default:
+				// for any other character, just include it literally
+				literal += string(l.char)
+			}
+			l.char, _ = l.readChar()
+			l.jumpToNextColumn()
+			continue
 		}
 
 		// closing quotes
@@ -186,22 +226,90 @@ func (l *Lexer) readString() (string, TokenType) {
 		}
 
 		if l.char == '\n' {
-			// TODO: language design, should we allow multiline strings like these? maybe not
-			// l.jumpToNextLine()
-			panic(fmt.Errorf("unterminated string before newline at line %d column %d", l.position.Line, l.position.Column))
+			return literal, ILLEGAL, fmt.Errorf("unterminated string before newline at line %d column %d", l.position.Line, l.position.Column)
 		} else {
-			l.position.Column++
+			l.jumpToNextColumn()
 		}
 
 		literal += string(l.char)
 		l.char, _ = l.readChar()
 	}
 
-	return literal, STRING
+	return literal, STRING, nil
+}
+
+// reads strings from a sequence of chars starting with `
+func (l *Lexer) readMultilineString() (string, TokenType, error) {
+	var literal string
+	var err error
+
+	l.char, err = l.readChar()
+	if err != nil {
+		return literal, ILLEGAL, err
+	}
+
+	l.jumpToNextColumn()
+
+	for {
+		if l.char == 0 {
+			return "", ILLEGAL, fmt.Errorf("unterminated string at line %d column %d", l.position.Line, l.position.Column)
+		}
+
+		// handle escape sequences
+		if l.char == '\\' {
+			l.jumpToNextColumn()
+			l.char, err = l.readChar()
+			if err != nil {
+				return literal, ILLEGAL, err
+			}
+
+			// handle common escape sequences
+			switch l.char {
+			case 'n':
+				literal += "\n"
+			case 't':
+				literal += "\t"
+			case 'r':
+				literal += "\r"
+			case '`':
+				literal += "`"
+			case '\\':
+				literal += "\\"
+			default:
+				// for any other character, just include it literally
+				literal += string(l.char)
+			}
+
+			if l.char == '\n' {
+				l.jumpToNextLine()
+			} else {
+				l.jumpToNextColumn()
+			}
+
+			l.char, _ = l.readChar()
+			continue
+		}
+
+		// closing quotes
+		if l.char == '`' {
+			break
+		}
+
+		if l.char == '\n' {
+			l.jumpToNextLine()
+		} else {
+			l.jumpToNextColumn()
+		}
+
+		literal += string(l.char)
+		l.char, _ = l.readChar()
+	}
+
+	return literal, STRING, nil
 }
 
 // reads numbers from a sequence of runes
-func (l *Lexer) readNumber() (string, TokenType) {
+func (l *Lexer) readNumber() (string, TokenType, error) {
 	position := l.position
 	var literal string
 	var tokenType TokenType = INT
@@ -215,18 +323,13 @@ func (l *Lexer) readNumber() (string, TokenType) {
 		if err != nil {
 			if err == io.EOF {
 				l.char = 0
-				return literal, tokenType
+				return literal, tokenType, nil
 			}
 
-			// TODO: use better error
-			panic(err)
+			return literal, ILLEGAL, err
 		}
 
-		l.position.Column++
-
-		if unicode.IsSymbol(r) || unicode.IsPunct(r) && r != '.' && len(literal) > 0 {
-			panic(fmt.Errorf("error: invalid token %v at line %v col %v", string(r), l.position.Line, l.position.Column))
-		}
+		l.jumpToNextColumn()
 
 		if unicode.IsDigit(r) {
 			literal += string(r)
@@ -235,22 +338,22 @@ func (l *Lexer) readNumber() (string, TokenType) {
 				tokenType = FLOAT
 				literal += string(r)
 			} else {
-				panic(fmt.Errorf("unexpected decimal point at line %d column %d", position.Line, position.Column))
+				return literal, ILLEGAL, fmt.Errorf("unexpected decimal point at line %d column %d", position.Line, position.Column)
 			}
 		} else {
 			l.char = r
-			return literal, tokenType
+			return literal, tokenType, nil
 		}
 	}
 }
 
-func (l *Lexer) NextToken() Token {
+func (l *Lexer) NextToken() (Token, error) {
 	// skip whitespace
 	for l.char == ' ' || l.char == '\t' || l.char == '\r' || l.char == '\n' {
 		if l.char == '\n' {
 			l.jumpToNextLine()
 		} else {
-			l.position.Column++
+			l.jumpToNextColumn()
 		}
 		l.char, _ = l.readChar()
 	}
@@ -260,7 +363,7 @@ func (l *Lexer) NextToken() Token {
 	switch l.char {
 	case 0:
 		tok.Type = EOF
-		return tok
+		return tok, nil
 	case '#':
 		// skip everything until end of line
 		for {
@@ -279,8 +382,12 @@ func (l *Lexer) NextToken() Token {
 		tok.Literal = string(l.char)
 	case '*':
 		tok.Literal = string(l.char)
+		peek, err := l.peekChar()
+		if err != nil {
+			return Token{}, nil
+		}
 		// check if value after is a number, meaning we are using a pointer
-		if unicode.IsDigit(l.peekChar()) {
+		if unicode.IsDigit(peek) {
 			return l.readPtr()
 		}
 		// else it's just a multiply
@@ -297,8 +404,12 @@ func (l *Lexer) NextToken() Token {
 	case '@':
 		return l.readPtrDeref()
 	case '=':
+		peek, err := l.peekChar()
+		if err != nil {
+			return Token{}, nil
+		}
 		// check if we're doing equality
-		if l.peekChar() == '=' {
+		if peek == '=' {
 			char := l.char
 			l.readChar()
 			tok.Type = EQ
@@ -308,40 +419,53 @@ func (l *Lexer) NextToken() Token {
 			tok.Literal = string(l.char)
 		}
 	case '!':
+		peek, err := l.peekChar()
+		if err != nil {
+			return Token{}, nil
+		}
 		// check if we're doing negation or equality check
-		if l.peekChar() == '=' {
-			char := l.char
+		if peek == '=' {
 			l.readChar()
 			tok.Type = NEQ
-			tok.Literal = string(char) + string(l.char)
+			tok.Literal = "!="
 		} else {
 			tok.Type = OP_NOT
 			tok.Literal = string(l.char)
 		}
 	case '>':
+		peek, err := l.peekChar()
+		if err != nil {
+			return Token{}, nil
+		}
 		// check if we're doing equality
-		if l.peekChar() == '=' {
-			char := l.char
+		if peek == '=' {
 			l.readChar()
 			tok.Type = GTE
-			tok.Literal = string(char) + string(l.char)
+			tok.Literal = ">="
 		} else {
 			tok.Type = GT
 			tok.Literal = string(l.char)
 		}
 	case '<':
+		peek, err := l.peekChar()
+		if err != nil {
+			return Token{}, nil
+		}
 		// check if we're doing equality
-		if l.peekChar() == '=' {
-			char := l.char
+		if peek == '=' {
 			l.readChar()
 			tok.Type = LTE
-			tok.Literal = string(char) + string(l.char)
+			tok.Literal = "<="
 		} else {
 			tok.Type = LT
 			tok.Literal = string(l.char)
 		}
 	case '&':
-		if l.peekChar() == '&' {
+		peek, err := l.peekChar()
+		if err != nil {
+			return Token{}, nil
+		}
+		if peek == '&' {
 			char := l.char
 			l.readChar()
 			tok.Type = OP_AND
@@ -351,7 +475,11 @@ func (l *Lexer) NextToken() Token {
 			tok.Literal = string(l.char)
 		}
 	case '|':
-		if l.peekChar() == '|' {
+		peek, err := l.peekChar()
+		if err != nil {
+			return Token{}, nil
+		}
+		if peek == '|' {
 			char := l.char
 			// consume next char
 			l.readChar()
@@ -371,24 +499,40 @@ func (l *Lexer) NextToken() Token {
 		tok.Type = COMMA
 		tok.Literal = string(l.char)
 	case '"':
-		tok.Literal, tok.Type = l.readString()
+		lit, tokType, err := l.readSinglelineString()
+		if err != nil {
+			return Token{}, err
+		}
+
+		tok.Literal, tok.Type = lit, tokType
 		// consume closing quote
 		l.char, _ = l.readChar()
-		l.position.Column++
-		return tok
+		l.jumpToNextColumn()
+		return tok, nil
 	case '$':
-		tok.Literal, tok.Type = l.readVariable()
+		lit, tokType, err := l.readVariable()
+		if err != nil {
+			return Token{}, err
+		}
+
+		tok.Literal, tok.Type = lit, tokType
 	default:
 		if unicode.IsLetter(l.char) {
-			lit, t := l.readIdent()
+			lit, tokType, err := l.readIdent()
+			if err != nil {
+				return Token{}, err
+			}
 			tok.Literal = lit
-			tok.Type = t
-			return tok
+			tok.Type = tokType
+			return tok, nil
 		} else if unicode.IsDigit(l.char) {
-			lit, t := l.readNumber()
+			lit, t, err := l.readNumber()
+			if err != nil {
+				return Token{}, err
+			}
 			tok.Literal = lit
 			tok.Type = t
-			return tok
+			return tok, nil
 		} else {
 			tok.Type = ILLEGAL
 			tok.Literal = string(l.char)
@@ -396,6 +540,6 @@ func (l *Lexer) NextToken() Token {
 	}
 
 	l.char, _ = l.readChar()
-	l.position.Column++
-	return tok
+	l.jumpToNextColumn()
+	return tok, nil
 }

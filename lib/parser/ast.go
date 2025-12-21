@@ -1,6 +1,9 @@
 package parser
 
-import "gorth/lexer"
+import (
+	"fmt"
+	"gorth/lexer"
+)
 
 type Node interface {
 	node()
@@ -11,8 +14,14 @@ type Program struct {
 	Statements []Node
 }
 
-func (p *Program) node()          {}
-func (p *Program) String() string { return "Program" }
+func (p *Program) node() {}
+func (p *Program) String() string {
+	result := ""
+	for _, stmt := range p.Statements {
+		result += stmt.String() + "\n"
+	}
+	return result
+}
 
 type IntLiteral struct {
 	Value    string
@@ -20,8 +29,10 @@ type IntLiteral struct {
 	Position lexer.Position
 }
 
-func (i *IntLiteral) node()          {}
-func (i *IntLiteral) String() string { return i.Value }
+func (i *IntLiteral) node() {}
+func (i *IntLiteral) String() string {
+	return fmt.Sprintf("%-15s %-15s %s", i.Token, i.Value, i.Position)
+}
 
 type FloatLiteral struct {
 	Value    string
@@ -29,8 +40,10 @@ type FloatLiteral struct {
 	Position lexer.Position
 }
 
-func (i *FloatLiteral) node()          {}
-func (i *FloatLiteral) String() string { return i.Value }
+func (i *FloatLiteral) node() {}
+func (i *FloatLiteral) String() string {
+	return fmt.Sprintf("%-15s %-15s %s", i.Token, i.Value, i.Position)
+}
 
 type StringLiteral struct {
 	Value    string
@@ -38,8 +51,10 @@ type StringLiteral struct {
 	Position lexer.Position
 }
 
-func (i *StringLiteral) node()          {}
-func (i *StringLiteral) String() string { return i.Value }
+func (i *StringLiteral) node() {}
+func (i *StringLiteral) String() string {
+	return fmt.Sprintf("%-15s %-15s %s", i.Token, i.Value, i.Position)
+}
 
 type BoolLiteral struct {
 	Value    string
@@ -47,8 +62,10 @@ type BoolLiteral struct {
 	Position lexer.Position
 }
 
-func (i *BoolLiteral) node()          {}
-func (i *BoolLiteral) String() string { return i.Value }
+func (i *BoolLiteral) node() {}
+func (i *BoolLiteral) String() string {
+	return fmt.Sprintf("%-15s %-15s %s", i.Token, i.Value, i.Position)
+}
 
 type Identifier struct {
 	Value    string
@@ -56,8 +73,10 @@ type Identifier struct {
 	Position lexer.Position
 }
 
-func (i *Identifier) node()          {}
-func (i *Identifier) String() string { return i.Value }
+func (i *Identifier) node() {}
+func (i *Identifier) String() string {
+	return fmt.Sprintf("%-15s %-15s %s", i.Token, i.Value, i.Position)
+}
 
 type BinaryExpression struct {
 	Left     Node
@@ -66,8 +85,10 @@ type BinaryExpression struct {
 	Position lexer.Position
 }
 
-func (b *BinaryExpression) node()          {}
-func (b *BinaryExpression) String() string { return "BinaryExpression" }
+func (b *BinaryExpression) node() {}
+func (b *BinaryExpression) String() string {
+	return fmt.Sprintf("%-15s %-15s %s", b.Operator, "", b.Position)
+}
 
 type UnaryExpression struct {
 	Operator lexer.TokenType
@@ -75,8 +96,10 @@ type UnaryExpression struct {
 	Position lexer.Position
 }
 
-func (u *UnaryExpression) node()          {}
-func (u *UnaryExpression) String() string { return "UnaryExpression" }
+func (u *UnaryExpression) node() {}
+func (u *UnaryExpression) String() string {
+	return fmt.Sprintf("%-15s %-15s %s", u.Operator, "", u.Position)
+}
 
 // Stack operations
 type StackOp struct {
@@ -84,8 +107,10 @@ type StackOp struct {
 	Pos       lexer.Position
 }
 
-func (s *StackOp) node()          {}
-func (s *StackOp) String() string { return "StackOp" }
+func (s *StackOp) node() {}
+func (s *StackOp) String() string {
+	return fmt.Sprintf("%-15s %-15s %s", s.Operation, "", s.Pos)
+}
 
 // Variable assignment
 type Assignment struct {
@@ -95,8 +120,10 @@ type Assignment struct {
 	Pos     lexer.Position
 }
 
-func (a *Assignment) node()          {}
-func (a *Assignment) String() string { return "Assignment" }
+func (a *Assignment) node() {}
+func (a *Assignment) String() string {
+	return fmt.Sprintf("%-15s %-15s %s", lexer.ASSIGN, a.Name, a.Pos)
+}
 
 // Print/Println/Dump
 type PrintStmt struct {
@@ -105,8 +132,10 @@ type PrintStmt struct {
 	Pos   lexer.Position
 }
 
-func (p *PrintStmt) node()          {}
-func (p *PrintStmt) String() string { return "PrintStmt" }
+func (p *PrintStmt) node() {}
+func (p *PrintStmt) String() string {
+	return fmt.Sprintf("%-15s %-15s %s", p.Kind, "", p.Pos)
+}
 
 // Pointer operations
 type PointerExpr struct {
@@ -115,8 +144,10 @@ type PointerExpr struct {
 	Pos       lexer.Position
 }
 
-func (p *PointerExpr) node()          {}
-func (p *PointerExpr) String() string { return "PointerExpr" }
+func (p *PointerExpr) node() {}
+func (p *PointerExpr) String() string {
+	return fmt.Sprintf("%-15s %-15s %s", p.Operation, "", p.Pos)
+}
 
 // Array literal
 type ArrayLiteral struct {
@@ -124,5 +155,7 @@ type ArrayLiteral struct {
 	Pos      lexer.Position
 }
 
-func (a *ArrayLiteral) node()          {}
-func (a *ArrayLiteral) String() string { return "ArrayLiteral" }
+func (a *ArrayLiteral) node() {}
+func (a *ArrayLiteral) String() string {
+	return fmt.Sprintf("%-15s %-15s %s", "ARR", "", a.Pos)
+}
