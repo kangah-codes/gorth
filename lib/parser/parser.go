@@ -32,19 +32,21 @@ func (p *Parser) peekTokenIs(t lexer.TokenType) bool {
 	return p.peekToken == t
 }
 
-func (p *Parser) nextToken() {
+func (p *Parser) nextToken() error {
 	p.currentToken = p.peekToken
 	p.currentLiteral = p.peekLiteral
 	p.currentPosition = p.peekPosition
 
 	lexedToken, err := p.lexer.NextToken()
 	if err != nil {
-		panic("not implemented")
+		return err
 	}
 
 	p.peekPosition = lexedToken.Pos
 	p.peekToken = lexedToken.Type
 	p.peekLiteral = lexedToken.Literal
+
+	return nil
 }
 
 func (p *Parser) Parse() (*Program, error) {
@@ -81,29 +83,23 @@ func (p *Parser) parseStatement() (Node, error) {
 		return p.parseFloatLiteral()
 	case lexer.VARIABLE:
 		return p.parseIdentLiteral()
-	case lexer.PTR:
-		return p.parsePtr()
-	case lexer.PTR_DEREF:
-		return p.parsePtrDeref()
+	case lexer.NULL:
+		return p.parseNullLiteral()
 	// binary ops
-	case lexer.OP_PLUS, lexer.OP_MINUS, lexer.OP_MULTIPLY, lexer.OP_DIVIDE, lexer.OP_POWER, lexer.OP_MODULO:
+	case lexer.OP_PLUS, lexer.OP_SUBTRACT, lexer.OP_MULTIPLY, lexer.OP_DIVIDE, lexer.OP_POWER,
+		lexer.OP_MODULO, lexer.OP_EQ, lexer.OP_NEQ, lexer.OP_GT, lexer.OP_LT, lexer.OP_GTE,
+		lexer.OP_LTE, lexer.OP_AND, lexer.OP_OR:
 		return p.parseBinaryOp()
-	// comparison ops
-	case lexer.EQ, lexer.NEQ, lexer.GT, lexer.LT, lexer.GTE, lexer.LTE:
-		return p.parseComparisonOp()
-	// logical ops
-	case lexer.OP_AND, lexer.OP_OR:
-		return p.parseLogicalOp()
 	// unary ops
-	case lexer.OP_NOT, lexer.OP_INC, lexer.OP_DEC, lexer.OP_DUMP: // adding dump op because even though it prints its unary & modifies stack
+	case lexer.OP_NOT, lexer.OP_INC, lexer.OP_DEC:
 		return p.parseUnaryOp()
 	// stack operations
-	case lexer.OP_DROP, lexer.OP_SWAP, lexer.OP_DUP, lexer.OP_OVER, lexer.OP_ROT, lexer.OP_DEL:
+	case lexer.OP_DROP, lexer.OP_SWAP, lexer.OP_DUP, lexer.OP_OVER, lexer.OP_ROT, lexer.OP_DEL, lexer.OP_CLEAR:
 		return p.parseStackOp()
-	// print ops
-	case lexer.OP_PRINT, lexer.OP_PRINTLN:
-		return p.parsePrintOp()
-	case lexer.ASSIGN:
+	// io operations
+	case lexer.OP_DUMP:
+		return p.parseIOOP()
+	case lexer.OP_ASSIGN:
 		return p.parseAssignment()
 	case lexer.ILLEGAL:
 		return nil, fmt.Errorf("illegal token at line %d, col %d: %s",
@@ -158,6 +154,14 @@ func (p *Parser) parseIdentLiteral() (Node, error) {
 	}, nil
 }
 
+func (p *Parser) parseNullLiteral() (Node, error) {
+	return &NullLiteral{
+		Value:    p.currentLiteral,
+		Position: p.currentPosition,
+		Token:    p.currentToken,
+	}, nil
+}
+
 // operator parsing
 func (p *Parser) parseUnaryOp() (Node, error) {
 	return &UnaryExpression{
@@ -175,22 +179,6 @@ func (p *Parser) parseBinaryOp() (Node, error) {
 	}, nil
 }
 
-func (p *Parser) parseComparisonOp() (Node, error) {
-	return &BinaryExpression{
-		Operator: p.currentToken,
-		Position: p.currentPosition,
-		// nodes will be filled in by interpreter based on stack values
-	}, nil
-}
-
-func (p *Parser) parseLogicalOp() (Node, error) {
-	return &BinaryExpression{
-		Operator: p.currentToken,
-		Position: p.currentPosition,
-		// nodes will be filled in by interpreter based on stack values
-	}, nil
-}
-
 func (p *Parser) parseStackOp() (Node, error) {
 	return &StackOp{
 		Operation: p.currentToken,
@@ -198,8 +186,8 @@ func (p *Parser) parseStackOp() (Node, error) {
 	}, nil
 }
 
-func (p *Parser) parsePrintOp() (Node, error) {
-	return &PrintStmt{
+func (p *Parser) parseIOOP() (Node, error) {
+	return &IOStmt{
 		Kind: p.currentToken,
 		Pos:  p.currentPosition,
 		// Value will be filled in by interpreter based on stack value
@@ -209,30 +197,8 @@ func (p *Parser) parsePrintOp() (Node, error) {
 // assignment and special ops
 func (p *Parser) parseAssignment() (Node, error) {
 	return &StackOp{
-		Operation: lexer.ASSIGN,
+		Operation: lexer.OP_ASSIGN,
 		Pos:       p.currentPosition,
-	}, nil
-}
-
-func (p *Parser) parsePtr() (Node, error) {
-	return &PointerExpr{
-		Operation: lexer.PTR,
-		Value: &IntLiteral{
-			Value:    p.currentLiteral[1:], // remove the * prefix
-			Position: p.currentPosition,
-		},
-		Pos: p.currentPosition,
-	}, nil
-}
-
-func (p *Parser) parsePtrDeref() (Node, error) {
-	return &PointerExpr{
-		Operation: lexer.PTR_DEREF,
-		Value: &IntLiteral{
-			Value:    p.currentLiteral[1:], // remove the @ prefix
-			Position: p.currentPosition,
-		},
-		Pos: p.currentPosition,
 	}, nil
 }
 

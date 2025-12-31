@@ -400,129 +400,90 @@ func TestClassifyIdent(t *testing.T) {
 		// Boolean literals
 		{
 			name:          "classify false as a boolean",
-			input:         "false",
+			input:         "FALSE",
 			expectedToken: BOOL,
 		},
 		{
 			name:          "classify true as a boolean",
-			input:         "true",
+			input:         "TRUE",
 			expectedToken: BOOL,
 		},
-
 		// Keywords
 		{
 			name:          "classify const keyword",
-			input:         "const",
+			input:         "CONST",
 			expectedToken: CONST,
 		},
 		{
 			name:          "classify proc keyword",
-			input:         "proc",
+			input:         "PROC",
 			expectedToken: PROC,
 		},
 		{
 			name:          "classify endproc keyword",
-			input:         "endproc",
+			input:         "ENDPROC",
 			expectedToken: ENDPROC,
 		},
 		{
 			name:          "classify in keyword",
-			input:         "in",
+			input:         "IN",
 			expectedToken: IN,
 		},
 		{
 			name:          "classify return keyword",
-			input:         "return",
+			input:         "RETURN",
 			expectedToken: RETURN,
 		},
-
-		// Type keywords
 		{
-			name:          "classify int type",
-			input:         "int",
-			expectedToken: TYPE_INT,
-		},
-		{
-			name:          "classify str type",
-			input:         "str",
-			expectedToken: TYPE_STR,
-		},
-		{
-			name:          "classify bool type",
-			input:         "bool",
-			expectedToken: TYPE_BOOL,
-		},
-		{
-			name:          "classify float type",
-			input:         "float",
-			expectedToken: TYPE_FLOAT,
-		},
-		{
-			name:          "classify ptr type",
-			input:         "ptr",
-			expectedToken: TYPE_PTR,
-		},
-		{
-			name:          "classify arr type",
-			input:         "arr",
-			expectedToken: TYPE_ARR,
+			name:          "classify null keyword",
+			input:         "NULL",
+			expectedToken: NULL,
 		},
 		// Stack operations
 		{
 			name:          "classify drop operation",
-			input:         "drop",
+			input:         "DROP",
 			expectedToken: OP_DROP,
 		},
 		{
 			name:          "classify swap operation",
-			input:         "swap",
+			input:         "SWAP",
 			expectedToken: OP_SWAP,
 		},
 		{
 			name:          "classify dup operation",
-			input:         "dup",
+			input:         "DUP",
 			expectedToken: OP_DUP,
 		},
 		{
 			name:          "classify over operation",
-			input:         "over",
+			input:         "OVER",
 			expectedToken: OP_OVER,
 		},
 		{
 			name:          "classify rot operation",
-			input:         "rot",
+			input:         "ROT",
 			expectedToken: OP_ROT,
 		},
 		{
 			name:          "classify del operation",
-			input:         "del",
+			input:         "DEL",
 			expectedToken: OP_DEL,
 		},
 		{
-			name:          "classify inc operation",
-			input:         "inc",
-			expectedToken: OP_INC,
-		},
-		{
-			name:          "classify dec operation",
-			input:         "dec",
-			expectedToken: OP_DEC,
-		},
-		// I/O operations
-		{
-			name:          "classify print operation",
-			input:         "print",
-			expectedToken: OP_PRINT,
-		},
-		{
-			name:          "classify println operation",
-			input:         "println",
-			expectedToken: OP_PRINTLN,
-		},
-		{
 			name:          "classify dump operation",
-			input:         "dump",
+			input:         "DUMP",
 			expectedToken: OP_DUMP,
+		},
+		{
+			name:          "classify clear operation",
+			input:         "CLEAR",
+			expectedToken: OP_CLEAR,
+		},
+		{
+			name:          "classify pick operation",
+			input:         "PICK",
+			expectedToken: OP_PICK,
 		},
 		// Invalid identifiers
 		{
@@ -576,7 +537,8 @@ func TestClassifyIdent(t *testing.T) {
 		if len(kw) <= 2 && (kw == "+" || kw == "-" || kw == "*" || kw == "/" ||
 			kw == "^" || kw == "%" || kw == "==" || kw == "!=" ||
 			kw == ">" || kw == "<" || kw == ">=" || kw == "<=" ||
-			kw == "&&" || kw == "||" || kw == "!" || kw == "=") {
+			kw == "&&" || kw == "||" || kw == "!" || kw == "=" ||
+			kw == "++" || kw == "--") {
 			continue
 		}
 
@@ -611,14 +573,14 @@ func TestReadIdent(t *testing.T) {
 	}{
 		{
 			name:              "return correct literal and tokentype for boolean input",
-			input:             "true",
-			expectedLiteral:   "true",
+			input:             "TRUE",
+			expectedLiteral:   "TRUE",
 			expectedTokenType: BOOL,
 		},
 		{
 			name:              "return correct literal and tokentype for keyword input",
-			input:             "dump",
-			expectedLiteral:   "dump",
+			input:             "DUMP",
+			expectedLiteral:   "DUMP",
 			expectedTokenType: OP_DUMP,
 		},
 		{
@@ -1253,7 +1215,7 @@ func TestNextToken(t *testing.T) {
 			input: "+ - * / ^ %",
 			expectedTokens: []Token{
 				{Type: OP_PLUS, Literal: "+", Pos: Position{Line: 1, Column: 1}},
-				{Type: OP_MINUS, Literal: "-", Pos: Position{Line: 1, Column: 3}},
+				{Type: OP_SUBTRACT, Literal: "-", Pos: Position{Line: 1, Column: 3}},
 				{Type: OP_MULTIPLY, Literal: "*", Pos: Position{Line: 1, Column: 5}},
 				{Type: OP_DIVIDE, Literal: "/", Pos: Position{Line: 1, Column: 7}},
 				{Type: OP_POWER, Literal: "^", Pos: Position{Line: 1, Column: 9}},
@@ -1265,12 +1227,12 @@ func TestNextToken(t *testing.T) {
 			name:  "comparison operators",
 			input: "== != > < >= <=",
 			expectedTokens: []Token{
-				{Type: EQ, Literal: "==", Pos: Position{Line: 1, Column: 1}},
-				{Type: NEQ, Literal: "!=", Pos: Position{Line: 1, Column: 4}},
-				{Type: GT, Literal: ">", Pos: Position{Line: 1, Column: 7}},
-				{Type: LT, Literal: "<", Pos: Position{Line: 1, Column: 9}},
-				{Type: GTE, Literal: ">=", Pos: Position{Line: 1, Column: 11}},
-				{Type: LTE, Literal: "<=", Pos: Position{Line: 1, Column: 14}},
+				{Type: OP_EQ, Literal: "==", Pos: Position{Line: 1, Column: 1}},
+				{Type: OP_NEQ, Literal: "!=", Pos: Position{Line: 1, Column: 4}},
+				{Type: OP_GT, Literal: ">", Pos: Position{Line: 1, Column: 7}},
+				{Type: OP_LT, Literal: "<", Pos: Position{Line: 1, Column: 9}},
+				{Type: OP_GTE, Literal: ">=", Pos: Position{Line: 1, Column: 11}},
+				{Type: OP_LTE, Literal: "<=", Pos: Position{Line: 1, Column: 14}},
 				{Type: EOF, Literal: "", Pos: Position{Line: 1, Column: 16}},
 			},
 		},
@@ -1288,7 +1250,7 @@ func TestNextToken(t *testing.T) {
 			name:  "assignment operator",
 			input: "=",
 			expectedTokens: []Token{
-				{Type: ASSIGN, Literal: "=", Pos: Position{Line: 1, Column: 1}},
+				{Type: OP_ASSIGN, Literal: "=", Pos: Position{Line: 1, Column: 1}},
 				{Type: EOF, Literal: "", Pos: Position{Line: 1, Column: 2}},
 			},
 		},
@@ -1352,7 +1314,7 @@ func TestNextToken(t *testing.T) {
 			input: "   \t\r\n   +   \n   -   ",
 			expectedTokens: []Token{
 				{Type: OP_PLUS, Literal: "+", Pos: Position{Line: 2, Column: 4}},
-				{Type: OP_MINUS, Literal: "-", Pos: Position{Line: 3, Column: 4}},
+				{Type: OP_SUBTRACT, Literal: "-", Pos: Position{Line: 3, Column: 4}},
 				{Type: EOF, Literal: "", Pos: Position{Line: 3, Column: 8}},
 			},
 		},
@@ -1390,7 +1352,7 @@ func TestNextToken(t *testing.T) {
 				{Type: VARIABLE, Literal: "$y", Pos: Position{Line: 1, Column: 4}},
 				{Type: OP_PLUS, Literal: "+", Pos: Position{Line: 1, Column: 7}},
 				{Type: INT, Literal: "42", Pos: Position{Line: 1, Column: 9}},
-				{Type: EQ, Literal: "==", Pos: Position{Line: 1, Column: 12}},
+				{Type: OP_EQ, Literal: "==", Pos: Position{Line: 1, Column: 12}},
 				{Type: EOF, Literal: "", Pos: Position{Line: 1, Column: 13}},
 			},
 		},

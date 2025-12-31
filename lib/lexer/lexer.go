@@ -76,16 +76,6 @@ func (l *Lexer) backup() error {
 	return nil
 }
 
-// reads a pointer from the stack
-func (l *Lexer) readPtr() (Token, error) {
-	panic("Not implemented")
-}
-
-// dereferences a pointer from the stack
-func (l *Lexer) readPtrDeref() (Token, error) {
-	panic("Not implemented")
-}
-
 func (l *Lexer) classifyIdent(lit string) TokenType {
 	// Check for boolean literals first
 	if lit == "true" || lit == "false" {
@@ -368,6 +358,10 @@ func (l *Lexer) NextToken() (Token, error) {
 	case 0:
 		tok.Type = EOF
 		return tok, nil
+	// TODO: should comments start at the beginning of a line?
+	// or we can arbitrarily add them after statements
+	// this will mean everything until the next line will be
+	// lexed as part of the comment
 	case '#':
 		// skip everything until end of line
 		for {
@@ -379,21 +373,39 @@ func (l *Lexer) NextToken() (Token, error) {
 		}
 		return l.NextToken()
 	case '+':
-		tok.Type = OP_PLUS
-		tok.Literal = string(l.char)
-	case '-':
-		tok.Type = OP_MINUS
-		tok.Literal = string(l.char)
-	case '*':
-		tok.Literal = string(l.char)
 		peek, err := l.peekChar()
 		if err != nil {
-			return Token{}, nil
+			return Token{}, err
 		}
-		// check if value after is a number, meaning we are using a pointer
-		if unicode.IsDigit(peek) {
-			return l.readPtr()
+
+		// means were doing an increment op
+		if peek == '+' {
+			tok.Type = OP_INC
+			char := l.char
+			l.readChar()
+			tok.Literal = string(char) + string(l.char)
+		} else {
+			tok.Type = OP_PLUS
+			tok.Literal = string(l.char)
 		}
+	case '-':
+		peek, err := l.peekChar()
+		if err != nil {
+			return Token{}, err
+		}
+
+		// means were doing an decrement op
+		if peek == '-' {
+			tok.Type = OP_DEC
+			char := l.char
+			l.readChar()
+			tok.Literal = string(char) + string(l.char)
+		} else {
+			tok.Type = OP_SUBTRACT
+			tok.Literal = string(l.char)
+		}
+	case '*':
+		tok.Literal = string(l.char)
 		// else it's just a multiply
 		tok.Type = OP_MULTIPLY
 	case '/':
@@ -405,8 +417,6 @@ func (l *Lexer) NextToken() (Token, error) {
 	case '%':
 		tok.Type = OP_MODULO
 		tok.Literal = string(l.char)
-	case '@':
-		return l.readPtrDeref()
 	case '=':
 		peek, err := l.peekChar()
 		if err != nil {
@@ -416,10 +426,10 @@ func (l *Lexer) NextToken() (Token, error) {
 		if peek == '=' {
 			char := l.char
 			l.readChar()
-			tok.Type = EQ
+			tok.Type = OP_EQ
 			tok.Literal = string(char) + string(l.char)
 		} else {
-			tok.Type = ASSIGN
+			tok.Type = OP_ASSIGN
 			tok.Literal = string(l.char)
 		}
 	case '!':
@@ -430,7 +440,7 @@ func (l *Lexer) NextToken() (Token, error) {
 		// check if we're doing negation or equality check
 		if peek == '=' {
 			l.readChar()
-			tok.Type = NEQ
+			tok.Type = OP_NEQ
 			tok.Literal = "!="
 		} else {
 			tok.Type = OP_NOT
@@ -444,10 +454,10 @@ func (l *Lexer) NextToken() (Token, error) {
 		// check if we're doing equality
 		if peek == '=' {
 			l.readChar()
-			tok.Type = GTE
+			tok.Type = OP_GTE
 			tok.Literal = ">="
 		} else {
-			tok.Type = GT
+			tok.Type = OP_GT
 			tok.Literal = string(l.char)
 		}
 	case '<':
@@ -458,10 +468,10 @@ func (l *Lexer) NextToken() (Token, error) {
 		// check if we're doing equality
 		if peek == '=' {
 			l.readChar()
-			tok.Type = LTE
+			tok.Type = OP_LTE
 			tok.Literal = "<="
 		} else {
-			tok.Type = LT
+			tok.Type = OP_LT
 			tok.Literal = string(l.char)
 		}
 	case '&':

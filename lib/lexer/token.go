@@ -13,32 +13,27 @@ const (
 	STRING TokenType = "STRING"
 	BOOL   TokenType = "BOOL"
 
+	// Null value
+	NULL TokenType = "NULL"
+
 	// Identifiers
 	IDENT TokenType = "IDENT"
 
-	// Types
-	TYPE_INT   TokenType = "TYPE_INT"
-	TYPE_STR   TokenType = "TYPE_STR"
-	TYPE_BOOL  TokenType = "TYPE_BOOL"
-	TYPE_FLOAT TokenType = "TYPE_FLOAT"
-	TYPE_PTR   TokenType = "TYPE_PTR"
-	TYPE_ARR   TokenType = "TYPE_ARR"
-
 	// keywords
 	OP_PLUS     TokenType = "OP_PLUS"     // +
-	OP_MINUS    TokenType = "OP_MINUS"    // -
+	OP_SUBTRACT TokenType = "OP_SUBTRACT" // -
 	OP_MULTIPLY TokenType = "OP_MULTIPLY" // *
 	OP_DIVIDE   TokenType = "OP_DIVIDE"   // /
 	OP_POWER    TokenType = "OP_POWER"    // ^
 	OP_MODULO   TokenType = "OP_MODULO"   // %
 
 	// Comparison
-	EQ  TokenType = "EQ"  // ==
-	NEQ TokenType = "NEQ" // !=
-	GT  TokenType = "GT"  // >
-	LT  TokenType = "LT"  // <
-	GTE TokenType = "GTE" // >=
-	LTE TokenType = "LTE" // <=
+	OP_EQ  TokenType = "OP_EQ"  // ==
+	OP_NEQ TokenType = "OP_NEQ" // !=
+	OP_GT  TokenType = "OP_GT"  // >
+	OP_LT  TokenType = "OP_LT"  // <
+	OP_GTE TokenType = "OP_GTE" // >=
+	OP_LTE TokenType = "OP_LTE" // <=
 
 	// Logical
 	OP_AND TokenType = "OP_AND" // &&
@@ -46,7 +41,7 @@ const (
 	OP_NOT TokenType = "OP_NOT" // !
 
 	// Assignment
-	ASSIGN TokenType = "ASSIGN" // =
+	OP_ASSIGN TokenType = "OP_ASSIGN" // =
 
 	// Keywords
 	CONST   TokenType = "CONST"
@@ -56,23 +51,19 @@ const (
 	RETURN  TokenType = "RETURN"
 
 	// Stack operations
-	OP_DROP TokenType = "OP_DROP"
-	OP_SWAP TokenType = "OP_SWAP"
-	OP_DUP  TokenType = "OP_DUP"
-	OP_OVER TokenType = "OP_OVER"
-	OP_ROT  TokenType = "OP_ROT"
-	OP_DEL  TokenType = "OP_DEL"
-	OP_INC  TokenType = "OP_INC"
-	OP_DEC  TokenType = "OP_DEC"
+	OP_DROP  TokenType = "OP_DROP"
+	OP_SWAP  TokenType = "OP_SWAP"
+	OP_DUP   TokenType = "OP_DUP"
+	OP_OVER  TokenType = "OP_OVER"
+	OP_ROT   TokenType = "OP_ROT"
+	OP_DEL   TokenType = "OP_DEL"
+	OP_INC   TokenType = "OP_INC"
+	OP_DEC   TokenType = "OP_DEC"
+	OP_CLEAR TokenType = "OP_CLEAR"
+	OP_PICK  TokenType = "OP_PICK"
 
 	// I/O
-	OP_PRINT   TokenType = "OP_PRINT"
-	OP_PRINTLN TokenType = "OP_PRINTLN"
-	OP_DUMP    TokenType = "OP_DUMP"
-
-	// Pointer operations
-	PTR_DEREF TokenType = "PTR_DEREF" // @
-	PTR       TokenType = "PTR"       // *n format
+	OP_DUMP TokenType = "OP_DUMP"
 
 	// Delimiters
 	LBRACKET TokenType = "LBRACKET" // [
@@ -98,95 +89,81 @@ var TokenMap = map[TokenType]string{
 	FLOAT:       "FLOAT",
 	STRING:      "STRING",
 	BOOL:        "BOOL",
+	NULL:        "NULL",
 	IDENT:       "IDENT",
-	TYPE_INT:    "TYPE_INT",
-	TYPE_STR:    "TYPE_STR",
-	TYPE_BOOL:   "TYPE_BOOL",
-	TYPE_FLOAT:  "TYPE_FLOAT",
-	TYPE_PTR:    "TYPE_PTR",
-	TYPE_ARR:    "TYPE_ARR",
-	OP_PLUS:     "OP_PLUS",
-	OP_MINUS:    "OP_MINUS",
-	OP_MULTIPLY: "OP_MULTIPLY",
-	OP_DIVIDE:   "OP_DIVIDE",
-	OP_POWER:    "OP_POWER",
-	OP_MODULO:   "OP_MODULO",
-	EQ:          "EQ",
-	NEQ:         "NEQ",
-	GT:          "GT",
-	LT:          "LT",
-	GTE:         "GTE",
-	LTE:         "LTE",
-	OP_AND:      "OP_AND",
-	OP_OR:       "OP_OR",
-	OP_NOT:      "OP_NOT",
-	ASSIGN:      "ASSIGN",
+	OP_PLUS:     "+",
+	OP_SUBTRACT: "-",
+	OP_MULTIPLY: "*",
+	OP_DIVIDE:   "/",
+	OP_POWER:    "^",
+	OP_MODULO:   "%",
+	OP_EQ:       "==",
+	OP_NEQ:      "!=",
+	OP_GT:       ">",
+	OP_LT:       "<",
+	OP_GTE:      ">=",
+	OP_LTE:      "<=",
+	OP_AND:      "&&",
+	OP_OR:       "||",
+	OP_NOT:      "!",
+	OP_ASSIGN:   "=",
 	CONST:       "CONST",
 	PROC:        "PROC",
 	ENDPROC:     "ENDPROC",
 	IN:          "IN",
 	RETURN:      "RETURN",
-	OP_DROP:     "OP_DROP",
-	OP_SWAP:     "OP_SWAP",
-	OP_DUP:      "OP_DUP",
-	OP_OVER:     "OP_OVER",
-	OP_ROT:      "OP_ROT",
-	OP_DEL:      "OP_DEL",
-	OP_INC:      "OP_INC",
-	OP_DEC:      "OP_DEC",
-	OP_PRINT:    "OP_PRINT",
-	OP_PRINTLN:  "OP_PRINTLN",
-	OP_DUMP:     "OP_DUMP",
-	PTR_DEREF:   "PTR_DEREF",
-	PTR:         "PTR",
-	LBRACKET:    "LBRACKET",
-	RBRACKET:    "RBRACKET",
-	COMMA:       "COMMA",
-	VARIABLE:    "VARIABLE",
+	OP_DROP:     "DROP",
+	OP_SWAP:     "SWAP",
+	OP_DUP:      "DUP",
+	OP_OVER:     "OVER",
+	OP_ROT:      "ROT",
+	OP_DEL:      "DEL",
+	OP_INC:      "++",
+	OP_DEC:      "--",
+	OP_DUMP:     "DUMP",
+	OP_CLEAR:    "CLEAR",
+	OP_PICK:     "PICK",
+	LBRACKET:    "[",
+	RBRACKET:    "]",
+	COMMA:       ",",
+	VARIABLE:    "$",
 }
 
 var keywords = map[string]TokenType{
-	"const":   CONST,
-	"proc":    PROC,
-	"endproc": ENDPROC,
-	"in":      IN,
-	"return":  RETURN,
-	"true":    BOOL,
-	"false":   BOOL,
-	"int":     TYPE_INT,
-	"str":     TYPE_STR,
-	"bool":    TYPE_BOOL,
-	"float":   TYPE_FLOAT,
-	"ptr":     TYPE_PTR,
-	"arr":     TYPE_ARR,
-	"drop":    OP_DROP,
-	"swap":    OP_SWAP,
-	"dup":     OP_DUP,
-	"over":    OP_OVER,
-	"rot":     OP_ROT,
-	"del":     OP_DEL,
-	"inc":     OP_INC,
-	"dec":     OP_DEC,
-	"print":   OP_PRINT,
-	"println": OP_PRINTLN,
-	"dump":    OP_DUMP,
-
-	"+":  OP_PLUS,
-	"-":  OP_MINUS,
-	"*":  OP_MULTIPLY,
-	"/":  OP_DIVIDE,
-	"^":  OP_POWER,
-	"%":  OP_MODULO,
-	"==": EQ,
-	"!=": NEQ,
-	">":  GT,
-	"<":  LT,
-	">=": GTE,
-	"<=": LTE,
-	"&&": OP_AND,
-	"||": OP_OR,
-	"!":  OP_NOT,
-	"=":  ASSIGN,
+	"CONST":   CONST,
+	"PROC":    PROC,
+	"ENDPROC": ENDPROC,
+	"IN":      IN,
+	"RETURN":  RETURN,
+	"TRUE":    BOOL,
+	"FALSE":   BOOL,
+	"NULL":    NULL,
+	"DROP":    OP_DROP,
+	"SWAP":    OP_SWAP,
+	"DUP":     OP_DUP,
+	"OVER":    OP_OVER,
+	"ROT":     OP_ROT,
+	"DEL":     OP_DEL,
+	"DUMP":    OP_DUMP,
+	"CLEAR":   OP_CLEAR,
+	"PICK":    OP_PICK,
+	// "+":  OP_PLUS,
+	// "-":  OP_SUBTRACT,
+	// "*":  OP_MULTIPLY,
+	// "/":  OP_DIVIDE,
+	// "^":  OP_POWER,
+	// "%":  OP_MODULO,
+	// "==": EQ,
+	// "!=": NEQ,
+	// ">":  GT,
+	// "<":  LT,
+	// ">=": GTE,
+	// "<=": LTE,
+	// "&&": OP_AND,
+	// "||": OP_OR,
+	// "!":  OP_NOT,
+	// "=":  OP_ASSIGN,
+	// "@":  OP_PTR_DEREF,
 }
 
 // LookupIdent checks if an identifier is a keyword
@@ -218,9 +195,9 @@ func IsDecimal(c rune) bool {
 
 func (t TokenType) TokenIsOperator() bool {
 	keywords := map[TokenType]bool{
-		OP_PLUS: true, OP_MINUS: true, OP_MULTIPLY: true, OP_DIVIDE: true,
-		OP_POWER: true, OP_MODULO: true, EQ: true, NEQ: true,
-		GT: true, LT: true, GTE: true, LTE: true,
+		OP_PLUS: true, OP_SUBTRACT: true, OP_MULTIPLY: true, OP_DIVIDE: true,
+		OP_POWER: true, OP_MODULO: true, OP_EQ: true, OP_NEQ: true,
+		OP_GT: true, OP_LT: true, OP_GTE: true, OP_LTE: true,
 		OP_AND: true, OP_OR: true, OP_NOT: true,
 	}
 	return keywords[t]
