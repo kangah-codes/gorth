@@ -1,2 +1,17 @@
-"Hello, World" DUMP
-2 3 + 3 *
+VAR age
+
+17 -> age
+
+age 18 >= IF
+    "You can drink" DUMP
+ELSE
+    "You cannot drink" DUMP
+END
+
+age 1 + -> age
+
+age 18 >= IF
+    "You can drink" DUMP
+ELSE
+    "You cannot drink" DUMP
+END

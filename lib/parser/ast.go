@@ -88,6 +88,14 @@ func PrintAST(node Node, indent int) string {
 			result.WriteString(PrintAST(elem, indent+2))
 		}
 
+	case *VarDeclaration:
+		fmt.Fprintf(&result, "%sVarDecl (name: %s)\n", prefix, n.Name)
+
+	case *ConstDeclaration:
+		fmt.Fprintf(&result, "%sConstDecl (name: %s):\n", prefix, n.Name)
+		result.WriteString(prefix + "  Value:\n")
+		result.WriteString(PrintAST(n.Value, indent+2))
+
 	default:
 		fmt.Fprintf(&result, "%sUnknown node type: %T\n", prefix, n)
 	}
@@ -259,6 +267,52 @@ func (a *ArrayLiteral) Homo() bool {
 }
 func (a *ArrayLiteral) String() string {
 	return fmt.Sprintf("%-15s %-15s %s", "ARR", fmt.Sprintf("%d elements", a.Len()), a.Pos)
+}
+
+// Variable declaration (VAR name)
+type VarDeclaration struct {
+	Name string
+	Pos  lexer.Position
+}
+
+func (v *VarDeclaration) node() {}
+func (v *VarDeclaration) String() string {
+	return fmt.Sprintf("%-15s %-15s %s", "VAR", v.Name, v.Pos)
+}
+
+// Constant declaration (CONST name value)
+type ConstDeclaration struct {
+	Name  string
+	Value Node
+	Pos   lexer.Position
+}
+
+func (c *ConstDeclaration) node() {}
+func (c *ConstDeclaration) String() string {
+	return fmt.Sprintf("%-15s %-15s %s", "CONST", c.Name, c.Pos)
+}
+
+type IfStmt struct {
+	Condition  Node
+	ThenBranch []Node
+	ElseBranch []Node
+	Position   lexer.Position
+}
+
+func (i *IfStmt) node() {}
+func (i *IfStmt) String() string {
+	return "IF statement"
+}
+
+type WhileStmt struct {
+	Condition Node
+	Body      []Node
+	Position  lexer.Position
+}
+
+func (i *WhileStmt) node() {}
+func (i *WhileStmt) String() string {
+	return "WHILE statement"
 }
 
 // SimulateStack shows what the stack looks like as the program executes

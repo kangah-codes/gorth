@@ -485,6 +485,16 @@ func TestClassifyIdent(t *testing.T) {
 			input:         "PICK",
 			expectedToken: OP_PICK,
 		},
+		{
+			name:          "classify inc operation",
+			input:         "INC",
+			expectedToken: OP_INC,
+		},
+		{
+			name:          "classify dec operation",
+			input:         "DEC",
+			expectedToken: OP_DEC,
+		},
 		// Invalid identifiers
 		{
 			name:          "unknown identifier returns illegal",
@@ -607,124 +617,6 @@ func TestReadIdent(t *testing.T) {
 
 			if tokType != tt.expectedTokenType {
 				t.Errorf("readIdent() tokenType expected %s got %s", tt.expectedTokenType, tokType)
-			}
-		})
-	}
-}
-
-func TestReadVariable(t *testing.T) {
-	tests := []struct {
-		name              string
-		input             string
-		expectedLiteral   string
-		expectedTokenType TokenType
-		shouldPanic       bool
-	}{
-		{
-			name:              "valid simple variable",
-			input:             "$variable",
-			expectedLiteral:   "$variable",
-			expectedTokenType: VARIABLE,
-		},
-		{
-			name:              "valid variable with numbers",
-			input:             "$var123",
-			expectedLiteral:   "$var123",
-			expectedTokenType: VARIABLE,
-		},
-		{
-			name:              "valid single letter variable",
-			input:             "$a",
-			expectedLiteral:   "$a",
-			expectedTokenType: VARIABLE,
-		},
-		{
-			name:              "valid variable with mixed case",
-			input:             "$MyVariable",
-			expectedLiteral:   "$MyVariable",
-			expectedTokenType: VARIABLE,
-		},
-		{
-			name:              "valid variable ending with number",
-			input:             "$test123",
-			expectedLiteral:   "$test123",
-			expectedTokenType: VARIABLE,
-		},
-		{
-			name:              "invalid variable starting with number",
-			input:             "$1variable",
-			expectedLiteral:   "$",
-			expectedTokenType: ILLEGAL,
-		},
-		{
-			name:              "invalid variable starting with symbol",
-			input:             "$@invalid",
-			expectedLiteral:   "$",
-			expectedTokenType: ILLEGAL,
-		},
-		{
-			name:              "invalid variable with only dollar sign",
-			input:             "$ ",
-			expectedLiteral:   "$",
-			expectedTokenType: ILLEGAL,
-		},
-		{
-			name:              "valid variable followed by space",
-			input:             "$var ",
-			expectedLiteral:   "$var",
-			expectedTokenType: VARIABLE,
-		},
-		{
-			name:              "valid variable followed by symbol",
-			input:             "$var+",
-			expectedLiteral:   "$var",
-			expectedTokenType: VARIABLE,
-		},
-		{
-			name:              "valid variable at end of input",
-			input:             "$test",
-			expectedLiteral:   "$test",
-			expectedTokenType: VARIABLE,
-		},
-		{
-			name:              "invalid variable with underscore",
-			input:             "$var_name",
-			expectedLiteral:   "$var",
-			expectedTokenType: VARIABLE,
-		},
-		{
-			name:              "valid unicode variable",
-			input:             "$αβγ",
-			expectedLiteral:   "$αβγ",
-			expectedTokenType: VARIABLE,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			reader := strings.NewReader(tt.input)
-			lexer := NewLexer(reader)
-
-			lit, tokType, err := lexer.readVariable()
-
-			if err != nil {
-				t.Errorf("readVariable() returned unexpected error %v", err)
-			}
-
-			if lit != tt.expectedLiteral {
-				t.Errorf("readVariable() literal = %s, want %s", lit, tt.expectedLiteral)
-			}
-
-			if tokType != tt.expectedTokenType {
-				t.Errorf("readVariable() tokenType = %s, want %s", tokType, tt.expectedTokenType)
-			}
-
-			// verify the lexer's current character is set correctly
-			if tt.expectedTokenType == VARIABLE && len(tt.input) > len(tt.expectedLiteral) {
-				expectedNextChar := rune(tt.input[len(tt.expectedLiteral)])
-				if lexer.char != expectedNextChar {
-					t.Errorf("readVariable() left lexer.char = %c, want %c", lexer.char, expectedNextChar)
-				}
 			}
 		})
 	}
@@ -1277,7 +1169,7 @@ func TestNextToken(t *testing.T) {
 			name:  "variable",
 			input: "$myvar",
 			expectedTokens: []Token{
-				{Type: VARIABLE, Literal: "$myvar", Pos: Position{Line: 1, Column: 1}},
+				{Type: VAR, Literal: "$myvar", Pos: Position{Line: 1, Column: 1}},
 				{Type: EOF, Literal: "", Pos: Position{Line: 1, Column: 7}},
 			},
 		},
@@ -1348,8 +1240,8 @@ func TestNextToken(t *testing.T) {
 			name:  "complex expression",
 			input: "$x $y + 42 ==",
 			expectedTokens: []Token{
-				{Type: VARIABLE, Literal: "$x", Pos: Position{Line: 1, Column: 1}},
-				{Type: VARIABLE, Literal: "$y", Pos: Position{Line: 1, Column: 4}},
+				{Type: VAR, Literal: "$x", Pos: Position{Line: 1, Column: 1}},
+				{Type: VAR, Literal: "$y", Pos: Position{Line: 1, Column: 4}},
 				{Type: OP_PLUS, Literal: "+", Pos: Position{Line: 1, Column: 7}},
 				{Type: INT, Literal: "42", Pos: Position{Line: 1, Column: 9}},
 				{Type: OP_EQ, Literal: "==", Pos: Position{Line: 1, Column: 12}},

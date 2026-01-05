@@ -16,10 +16,10 @@ const (
 	// Null value
 	NULL TokenType = "NULL"
 
-	// Identifiers
+	// Identifiers (variable names, word names, etc.)
 	IDENT TokenType = "IDENT"
 
-	// keywords
+	// Math operators
 	OP_PLUS     TokenType = "OP_PLUS"     // +
 	OP_SUBTRACT TokenType = "OP_SUBTRACT" // -
 	OP_MULTIPLY TokenType = "OP_MULTIPLY" // *
@@ -45,10 +45,16 @@ const (
 
 	// Keywords
 	CONST   TokenType = "CONST"
+	VAR     TokenType = "VAR"
 	PROC    TokenType = "PROC"
 	ENDPROC TokenType = "ENDPROC"
 	IN      TokenType = "IN"
 	RETURN  TokenType = "RETURN"
+	IF      TokenType = "IF"
+	ELIF    TokenType = "ELIF"
+	ELSE    TokenType = "ELSE"
+	END     TokenType = "END"
+	WHILE   TokenType = "WHILE"
 
 	// Stack operations
 	OP_DROP  TokenType = "OP_DROP"
@@ -69,11 +75,6 @@ const (
 	LBRACKET TokenType = "LBRACKET" // [
 	RBRACKET TokenType = "RBRACKET" // ]
 	COMMA    TokenType = "COMMA"    // ,
-
-	// Comment
-
-	// Variables
-	VARIABLE TokenType = "VARIABLE"
 )
 
 type Token struct {
@@ -106,8 +107,9 @@ var TokenMap = map[TokenType]string{
 	OP_AND:      "&&",
 	OP_OR:       "||",
 	OP_NOT:      "!",
-	OP_ASSIGN:   "=",
+	OP_ASSIGN:   "->",
 	CONST:       "CONST",
+	VAR:         "VAR",
 	PROC:        "PROC",
 	ENDPROC:     "ENDPROC",
 	IN:          "IN",
@@ -118,19 +120,23 @@ var TokenMap = map[TokenType]string{
 	OP_OVER:     "OVER",
 	OP_ROT:      "ROT",
 	OP_DEL:      "DEL",
-	OP_INC:      "++",
-	OP_DEC:      "--",
+	OP_INC:      "INC",
+	OP_DEC:      "DEC",
 	OP_DUMP:     "DUMP",
 	OP_CLEAR:    "CLEAR",
 	OP_PICK:     "PICK",
 	LBRACKET:    "[",
 	RBRACKET:    "]",
 	COMMA:       ",",
-	VARIABLE:    "$",
+	IF:          "IF",
+	ELSE:        "ELSE",
+	END:         "END",
+	WHILE:       "WHILE",
 }
 
 var keywords = map[string]TokenType{
 	"CONST":   CONST,
+	"VAR":     VAR,
 	"PROC":    PROC,
 	"ENDPROC": ENDPROC,
 	"IN":      IN,
@@ -147,23 +153,12 @@ var keywords = map[string]TokenType{
 	"DUMP":    OP_DUMP,
 	"CLEAR":   OP_CLEAR,
 	"PICK":    OP_PICK,
-	// "+":  OP_PLUS,
-	// "-":  OP_SUBTRACT,
-	// "*":  OP_MULTIPLY,
-	// "/":  OP_DIVIDE,
-	// "^":  OP_POWER,
-	// "%":  OP_MODULO,
-	// "==": EQ,
-	// "!=": NEQ,
-	// ">":  GT,
-	// "<":  LT,
-	// ">=": GTE,
-	// "<=": LTE,
-	// "&&": OP_AND,
-	// "||": OP_OR,
-	// "!":  OP_NOT,
-	// "=":  OP_ASSIGN,
-	// "@":  OP_PTR_DEREF,
+	"INC":     OP_INC,
+	"DEC":     OP_DEC,
+	"IF":      IF,
+	"ELSE":    ELSE,
+	"END":     END,
+	"WHILE":   WHILE,
 }
 
 // LookupIdent checks if an identifier is a keyword

@@ -12,6 +12,7 @@ type GorthRuntime struct {
 	dataStack   *Stack
 	returnStack *Stack
 	variables   map[string]Value
+	constants   map[string]Value
 	words       map[string]*Word
 	memory      []Value
 	halted      bool
@@ -22,6 +23,7 @@ func NewRuntime() *GorthRuntime {
 		dataStack:   &Stack{items: make([]Value, 0), max: 999_999_999},
 		returnStack: &Stack{items: make([]Value, 0), max: 999_999_999},
 		variables:   make(map[string]Value),
+		constants:   make(map[string]Value),
 		words:       make(map[string]*Word),
 		memory:      make([]Value, 0),
 		halted:      false,
@@ -51,16 +53,32 @@ func (r *GorthRuntime) executeNode(node parser.Node) error {
 		return r.execFloatLiteral(n)
 	case *parser.StringLiteral:
 		return r.execStrLiteral(n)
-	case *parser.NullLiteral:
-		return r.execNullLiteral()
 	case *parser.BoolLiteral:
 		return r.execBoolLiteral(n)
-	case *parser.UnaryExpression:
-		return r.execUnaryOp(n)
+	case *parser.NullLiteral:
+		return r.execNullLiteral()
+	case *parser.Identifier:
+		return r.execIdentifier(n)
 	case *parser.BinaryExpression:
 		return r.execBinaryOp(n)
+	case *parser.UnaryExpression:
+		return r.execUnaryOp(n)
+	case *parser.StackOp:
+		return r.execStackOp(n)
+	case *parser.ArrayLiteral:
+		return r.execArrayLiteral(n)
 	case *parser.IOStmt:
 		return r.execIOStmt(n)
+	case *parser.VarDeclaration:
+		return r.execVarDeclaration(n)
+	case *parser.ConstDeclaration:
+		return r.execConstDeclaration(n)
+	case *parser.Assignment:
+		return r.execAssignment(n)
+	case *parser.IfStmt:
+		return r.execIfStmt(n)
+	case *parser.WhileStmt:
+		return r.execWhileStmt(n)
 	default:
 		return fmt.Errorf("unknown node type: %T", node)
 	}
@@ -77,6 +95,182 @@ func (r *GorthRuntime) execIntLiteral(n *parser.IntLiteral) error {
 
 func (r *GorthRuntime) execNullLiteral() error {
 	return r.dataStack.Push(Value{Type: TYPE_NULL, Data: nil})
+}
+
+func (r *GorthRuntime) execUnaryOp(n *parser.UnaryExpression) error {
+	val, err := r.dataStack.Pop()
+	if err != nil {
+		return fmt.Errorf("unary op %s: %v", lexer.TokenMap[n.Operator], err)
+	}
+
+	var result Value
+
+	switch n.Operator {
+	case lexer.OP_NOT:
+		if val.Type != TYPE_BOOL {
+			return fmt.Errorf("NOT requires boolean, got %s", r.typeToString(val.Type))
+		}
+		result = Value{Type: TYPE_BOOL, Data: !val.Data.(bool)}
+
+	case lexer.OP_INC:
+		switch val.Type {
+		case TYPE_INT:
+			result = Value{Type: TYPE_INT, Data: val.Data.(int) + 1}
+		case TYPE_FLOAT:
+			result = Value{Type: TYPE_FLOAT, Data: val.Data.(float64) + 1.0}
+		default:
+			return fmt.Errorf("INC requires numeric type, got %s", r.typeToString(val.Type))
+		}
+
+	case lexer.OP_DEC:
+		switch val.Type {
+		case TYPE_INT:
+			result = Value{Type: TYPE_INT, Data: val.Data.(int) - 1}
+		case TYPE_FLOAT:
+			result = Value{Type: TYPE_FLOAT, Data: val.Data.(float64) - 1.0}
+		default:
+			return fmt.Errorf("DEC requires numeric type, got %s", r.typeToString(val.Type))
+		}
+
+	case lexer.OP_DUMP:
+		// DUMP prints and leaves value on stack
+		fmt.Println(r.valueToString(val))
+		return r.dataStack.Push(val)
+
+	default:
+		return fmt.Errorf("unknown unary operator: %s", lexer.TokenMap[n.Operator])
+	}
+
+	return r.dataStack.Push(result)
+}
+
+func (r *GorthRuntime) execVarDeclaration(n *parser.VarDeclaration) error {
+	// VAR just declares a variable with null value
+	r.variables[n.Name] = Value{Type: TYPE_NULL, Data: nil}
+	return nil
+}
+
+func (r *GorthRuntime) execConstDeclaration(n *parser.ConstDeclaration) error {
+	// CONST name value - evaluate the value and store it
+	err := r.executeNode(n.Value)
+	if err != nil {
+		return err
+	}
+
+	val, err := r.dataStack.Pop()
+	if err != nil {
+		return err
+	}
+
+	r.constants[n.Name] = val
+	return nil
+}
+
+func (r *GorthRuntime) execStackOp(n *parser.StackOp) error {
+	switch n.Operation {
+	case lexer.OP_DUP:
+		val, err := r.dataStack.Peek()
+		if err != nil {
+			return err
+		}
+		return r.dataStack.Push(val)
+
+	case lexer.OP_DROP:
+		_, err := r.dataStack.Pop()
+		return err
+
+	case lexer.OP_SWAP:
+		b, err := r.dataStack.Pop()
+		if err != nil {
+			return err
+		}
+		a, err := r.dataStack.Pop()
+		if err != nil {
+			return err
+		}
+		r.dataStack.Push(b)
+		r.dataStack.Push(a)
+		return nil
+
+	case lexer.OP_OVER:
+		if r.dataStack.Size() < 2 {
+			return fmt.Errorf("OVER requires 2 items on stack")
+		}
+		second := r.dataStack.items[r.dataStack.Size()-2]
+		return r.dataStack.Push(second)
+
+	case lexer.OP_ROT:
+		if r.dataStack.Size() < 3 {
+			return fmt.Errorf("ROT requires 3 items on stack")
+		}
+		c, _ := r.dataStack.Pop()
+		b, _ := r.dataStack.Pop()
+		a, _ := r.dataStack.Pop()
+		r.dataStack.Push(b)
+		r.dataStack.Push(c)
+		r.dataStack.Push(a)
+		return nil
+
+	case lexer.OP_PICK:
+		val, err := r.dataStack.Pop()
+		if err != nil {
+			return err
+		}
+
+		if val.Type != TYPE_INT {
+			return fmt.Errorf("cannot use pick on non-integer types: got %s", r.typeToString(val.Type))
+		}
+
+		valInt := val.Data.(int)
+		if valInt >= 0 && valInt < len(r.dataStack.items) {
+			r.dataStack.Push(r.dataStack.items[val.Data.(int)])
+		} else {
+			return fmt.Errorf("stack index out of range: %d items total, got index %d", len(r.dataStack.items), valInt)
+		}
+
+		return nil
+
+	default:
+		return fmt.Errorf("unknown stack operation: %s", lexer.TokenMap[n.Operation])
+	}
+}
+
+func (r *GorthRuntime) execAssignment(n *parser.Assignment) error {
+	val, err := r.dataStack.Pop()
+	if err != nil {
+		return err
+	}
+
+	// check if its a const
+	if _, ok := r.constants[n.Name]; ok {
+		return fmt.Errorf("cannot reassign value to const %s", n.Name)
+	}
+
+	// check if variable exists
+	if _, ok := r.variables[n.Name]; !ok {
+		return fmt.Errorf("undefined variable %s", n.Name)
+	}
+
+	r.variables[n.Name] = val
+	return nil
+}
+
+func (r *GorthRuntime) execArrayLiteral(n *parser.ArrayLiteral) error {
+	// Evaluate each element and collect values
+	elements := make([]Value, len(n.Elements))
+	for i, elem := range n.Elements {
+		err := r.executeNode(elem)
+		if err != nil {
+			return err
+		}
+		val, err := r.dataStack.Pop()
+		if err != nil {
+			return err
+		}
+		elements[i] = val
+	}
+
+	return r.dataStack.Push(Value{Type: TYPE_ARRAY, Data: elements})
 }
 
 func (r *GorthRuntime) execStrLiteral(n *parser.StringLiteral) error {
@@ -106,10 +300,20 @@ func (r *GorthRuntime) execIdentifier(n *parser.Identifier) error {
 		return r.dataStack.Push(val)
 	}
 
-	// check if its user defined
-	// TODO: implement
+	// check if its a constant
+	if val, ok := r.constants[n.Value]; ok {
+		return r.dataStack.Push(val)
+	}
 
-	return fmt.Errorf("undefined identifier: %s", n.Value)
+	// check if its user defined word
+	if _, ok := r.words[n.Value]; ok {
+		// TODO: execute word
+		return fmt.Errorf("word execution not yet implemented: %s", n.Value)
+	}
+
+	// If identifier is undefined, push its name as a string
+	// This allows it to be used for assignment: value identifier ->
+	return r.dataStack.Push(Value{Type: TYPE_STR, Data: n.Value})
 }
 
 func (r *GorthRuntime) execIOStmt(n *parser.IOStmt) error {
@@ -124,28 +328,6 @@ func (r *GorthRuntime) execIOStmt(n *parser.IOStmt) error {
 	}
 
 	return nil
-}
-
-func (r *GorthRuntime) execUnaryOp(n *parser.UnaryExpression) error {
-	operand, err := r.dataStack.Pop()
-	if err != nil {
-		return fmt.Errorf("unary op %s: %v", lexer.TokenMap[n.Operator], err)
-	}
-
-	var result Value
-
-	switch n.Operator {
-	case lexer.OP_NOT:
-		result, err = r.not(operand)
-	case lexer.OP_INC:
-		result, err = r.inc(operand)
-	case lexer.OP_DEC:
-		result, err = r.dec(operand)
-	default:
-		return fmt.Errorf("unknown operator: %s", lexer.TokenMap[n.Operator])
-	}
-
-	return r.dataStack.Push(result)
 }
 
 func (r *GorthRuntime) execBinaryOp(n *parser.BinaryExpression) error {
@@ -212,6 +394,61 @@ func (r *GorthRuntime) execBinaryOp(n *parser.BinaryExpression) error {
 	}
 
 	return r.dataStack.Push(result)
+}
+
+func (r *GorthRuntime) execIfStmt(n *parser.IfStmt) error {
+	condition, err := r.dataStack.Pop()
+	if err != nil {
+		return fmt.Errorf("IF statement requires condition on stack: %v", err)
+	}
+
+	// condition must be boolean
+	if condition.Type != TYPE_BOOL {
+		return fmt.Errorf("IF condition must be boolean, got %s", r.typeToString(condition.Type))
+	}
+
+	// execute branch
+	if condition.Data.(bool) {
+		for _, stmt := range n.ThenBranch {
+			if err := r.executeNode(stmt); err != nil {
+				return err
+			}
+		}
+	} else if len(n.ElseBranch) > 0 {
+		for _, stmt := range n.ElseBranch {
+			if err := r.executeNode(stmt); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func (r *GorthRuntime) execWhileStmt(n *parser.WhileStmt) error {
+	for {
+		// execute body since condition is at end of body
+		for _, stmt := range n.Body {
+			if err := r.executeNode(stmt); err != nil {
+				return err
+			}
+		}
+
+		condition, err := r.dataStack.Pop()
+		if err != nil {
+			return fmt.Errorf("WHILE statement requires condition on stack: %v", err)
+		}
+
+		if condition.Type != TYPE_BOOL {
+			return fmt.Errorf("WHILE condition must be boolean, got %s", r.typeToString(condition.Type))
+		}
+
+		if !condition.Data.(bool) {
+			break
+		}
+	}
+
+	return nil
 }
 
 func (r *GorthRuntime) not(op Value) (Value, error) {
@@ -472,6 +709,15 @@ func (r *GorthRuntime) PrintState() {
 		fmt.Println("  <none>")
 	} else {
 		for name, val := range r.variables {
+			fmt.Printf("  %s = %s (%s)\n", name, r.valueToString(val), r.typeToString(val.Type))
+		}
+	}
+
+	fmt.Println("\nConstants:")
+	if len(r.constants) == 0 {
+		fmt.Println("  <none>")
+	} else {
+		for name, val := range r.constants {
 			fmt.Printf("  %s = %s (%s)\n", name, r.valueToString(val), r.typeToString(val.Type))
 		}
 	}

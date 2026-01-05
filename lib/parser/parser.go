@@ -81,7 +81,11 @@ func (p *Parser) parseStatement() (Node, error) {
 		return p.parseBoolLiteral()
 	case lexer.FLOAT:
 		return p.parseFloatLiteral()
-	case lexer.VARIABLE:
+	case lexer.VAR:
+		return p.parseVarDeclaration()
+	case lexer.CONST:
+		return p.parseConstDeclaration()
+	case lexer.IDENT:
 		return p.parseIdentLiteral()
 	case lexer.NULL:
 		return p.parseNullLiteral()
@@ -94,7 +98,7 @@ func (p *Parser) parseStatement() (Node, error) {
 	case lexer.OP_NOT, lexer.OP_INC, lexer.OP_DEC:
 		return p.parseUnaryOp()
 	// stack operations
-	case lexer.OP_DROP, lexer.OP_SWAP, lexer.OP_DUP, lexer.OP_OVER, lexer.OP_ROT, lexer.OP_DEL, lexer.OP_CLEAR:
+	case lexer.OP_DROP, lexer.OP_SWAP, lexer.OP_DUP, lexer.OP_OVER, lexer.OP_ROT, lexer.OP_DEL, lexer.OP_CLEAR, lexer.OP_PICK:
 		return p.parseStackOp()
 	// io operations
 	case lexer.OP_DUMP:
@@ -107,6 +111,10 @@ func (p *Parser) parseStatement() (Node, error) {
 	// array literal
 	case lexer.LBRACKET:
 		return p.parseArray()
+	case lexer.IF:
+		return p.parseIfStmt()
+	case lexer.WHILE:
+		return p.parseWhileStmt()
 	default:
 		return nil, fmt.Errorf("unexpected token %s at line %d, col %d",
 			lexer.TokenMap[p.currentToken], p.currentPosition.Line, p.currentPosition.Column)
@@ -194,11 +202,87 @@ func (p *Parser) parseIOOP() (Node, error) {
 	}, nil
 }
 
+// Variable and constant declarations
+func (p *Parser) parseVarDeclaration() (Node, error) {
+	// VAR variableName
+	pos := p.currentPosition
+	p.nextToken() // move to identifier
+
+	if !p.currentTokenIs(lexer.IDENT) {
+		return nil, fmt.Errorf("expected identifier after VAR at line %d, col %d",
+			p.currentPosition.Line, p.currentPosition.Column)
+	}
+
+	varName := p.currentLiteral
+
+	return &VarDeclaration{
+		Name: varName,
+		Pos:  pos,
+	}, nil
+}
+
+func (p *Parser) parseConstDeclaration() (Node, error) {
+	// CONST constName value
+	pos := p.currentPosition
+	p.nextToken() // move to identifier
+
+	if !p.currentTokenIs(lexer.IDENT) {
+		return nil, fmt.Errorf("expected identifier after CONST at line %d, col %d",
+			p.currentPosition.Line, p.currentPosition.Column)
+	}
+
+	constName := p.currentLiteral
+	p.nextToken() // move to value
+
+	// Parse the value (could be any literal)
+	var value Node
+	var err error
+
+	switch p.currentToken {
+	case lexer.INT:
+		value, err = p.parseIntLiteral()
+	case lexer.FLOAT:
+		value, err = p.parseFloatLiteral()
+	case lexer.STRING:
+		value, err = p.parseStrLiteral()
+	case lexer.BOOL:
+		value, err = p.parseBoolLiteral()
+	case lexer.NULL:
+		value, err = p.parseNullLiteral()
+	default:
+		return nil, fmt.Errorf("expected literal value after const name at line %d, col %d",
+			p.currentPosition.Line, p.currentPosition.Column)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &ConstDeclaration{
+		Name:  constName,
+		Value: value,
+		Pos:   pos,
+	}, nil
+}
+
 // assignment and special ops
 func (p *Parser) parseAssignment() (Node, error) {
-	return &StackOp{
-		Operation: lexer.OP_ASSIGN,
-		Pos:       p.currentPosition,
+	// Current token is OP_ASSIGN (->)
+	pos := p.currentPosition
+
+	// Next token MUST be an identifier (variable name)
+	p.nextToken()
+
+	if !p.currentTokenIs(lexer.IDENT) {
+		return nil, fmt.Errorf("expected identifier after '->' at line %d, col %d, got %s",
+			p.currentPosition.Line, p.currentPosition.Column, lexer.TokenMap[p.currentToken])
+	}
+
+	varName := p.currentLiteral
+
+	return &Assignment{
+		Name: varName,
+		Pos:  pos,
 	}, nil
 }
 
@@ -238,5 +322,93 @@ func (p *Parser) parseArray() (Node, error) {
 	return &ArrayLiteral{
 		Elements: elements,
 		Pos:      pos,
+	}, nil
+}
+
+func (p *Parser) parseIfStmt() (Node, error) {
+	pos := p.currentPosition
+
+	p.nextToken()
+
+	// then branch should be a series of nodes
+	thenBranch := []Node{}
+	for !p.currentTokenIs(lexer.ELSE) && !p.currentTokenIs(lexer.END) && !p.currentTokenIs(lexer.EOF) {
+		stmt, err := p.parseStatement()
+		if err != nil {
+			return nil, err
+		}
+
+		// add the statement to the thenbranch if if exists
+		if stmt != nil {
+			thenBranch = append(thenBranch, stmt)
+		}
+
+		// advance the parser
+		p.nextToken()
+	}
+
+	// parse optional else
+	var elseBranch []Node
+	if p.currentTokenIs(lexer.ELSE) {
+		// consume else
+		p.nextToken()
+
+		for !p.currentTokenIs(lexer.END) && !p.currentTokenIs(lexer.EOF) {
+			stmt, err := p.parseStatement()
+			if err != nil {
+				return nil, err
+			}
+
+			// add the statement to the thenbranch if if exists
+			if stmt != nil {
+				elseBranch = append(elseBranch, stmt)
+			}
+
+			// advance the parser
+			p.nextToken()
+		}
+	}
+
+	// expect an end
+	if !p.currentTokenIs(lexer.END) {
+		return nil, fmt.Errorf("expected END at line %d, col %d",
+			p.currentPosition.Line, p.currentPosition.Column)
+	}
+
+	return &IfStmt{
+		ThenBranch: thenBranch,
+		ElseBranch: elseBranch,
+		Position:   pos,
+	}, nil
+
+}
+
+func (p *Parser) parseWhileStmt() (Node, error) {
+	pos := p.currentPosition
+
+	p.nextToken()
+
+	body := []Node{}
+	for !p.currentTokenIs(lexer.END) && !p.currentTokenIs(lexer.EOF) {
+		stmt, err := p.parseStatement()
+		if err != nil {
+			return nil, err
+		}
+
+		if stmt != nil {
+			body = append(body, stmt)
+		}
+
+		p.nextToken()
+	}
+
+	if !p.currentTokenIs(lexer.END) {
+		return nil, fmt.Errorf("expected END at line %d, col %d",
+			p.currentPosition.Line, p.currentPosition.Column)
+	}
+
+	return &WhileStmt{
+		Body:     body,
+		Position: pos,
 	}, nil
 }

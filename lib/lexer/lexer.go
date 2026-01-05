@@ -87,8 +87,8 @@ func (l *Lexer) classifyIdent(lit string) TokenType {
 		return tokType
 	}
 
-	// means its most likely illegal
-	return ILLEGAL
+	// Otherwise it's an identifier (variable/word name)
+	return IDENT
 }
 
 // read identifiers
@@ -118,47 +118,6 @@ func (l *Lexer) readIdent() (string, TokenType, error) {
 		}
 
 		lit += string(r)
-	}
-}
-
-// read variable names from a sequence of chars
-func (l *Lexer) readVariable() (string, TokenType, error) {
-	var literal string
-
-	literal = string(l.char)
-
-	r, err := l.readChar()
-	if err != nil {
-		return literal, ILLEGAL, err
-	}
-
-	l.jumpToNextColumn()
-
-	if !unicode.IsLetter(r) {
-		return literal, ILLEGAL, nil
-	}
-
-	literal += string(r)
-
-	for {
-		r, _, err := l.reader.ReadRune()
-		if err != nil {
-			if err == io.EOF {
-				l.char = 0
-				return literal, VARIABLE, nil
-			}
-
-			return "", ILLEGAL, err
-		}
-
-		l.jumpToNextColumn()
-
-		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
-			l.char = r
-			return literal, VARIABLE, nil
-		}
-
-		literal += string(r)
 	}
 }
 
@@ -332,7 +291,7 @@ func (l *Lexer) readNumber() (string, TokenType, error) {
 				tokenType = FLOAT
 				literal += string(r)
 			} else {
-				return literal, ILLEGAL, fmt.Errorf("unexpected decimal point at line %d column %d", position.Line, position.Column)
+				return literal, ILLEGAL, fmt.Errorf("i decimal point at line %d column %d", position.Line, position.Column)
 			}
 		} else {
 			l.char = r
@@ -373,32 +332,19 @@ func (l *Lexer) NextToken() (Token, error) {
 		}
 		return l.NextToken()
 	case '+':
-		peek, err := l.peekChar()
-		if err != nil {
-			return Token{}, err
-		}
-
-		// means were doing an increment op
-		if peek == '+' {
-			tok.Type = OP_INC
-			char := l.char
-			l.readChar()
-			tok.Literal = string(char) + string(l.char)
-		} else {
-			tok.Type = OP_PLUS
-			tok.Literal = string(l.char)
-		}
+		tok.Type = OP_PLUS
+		tok.Literal = string(l.char)
 	case '-':
 		peek, err := l.peekChar()
 		if err != nil {
 			return Token{}, err
 		}
 
-		// means were doing an decrement op
-		if peek == '-' {
-			tok.Type = OP_DEC
+		// means we are assigning a value to a var
+		if peek == '>' {
 			char := l.char
 			l.readChar()
+			tok.Type = OP_ASSIGN
 			tok.Literal = string(char) + string(l.char)
 		} else {
 			tok.Type = OP_SUBTRACT
@@ -523,13 +469,6 @@ func (l *Lexer) NextToken() (Token, error) {
 		l.char, _ = l.readChar()
 		l.jumpToNextColumn()
 		return tok, nil
-	case '$':
-		lit, tokType, err := l.readVariable()
-		if err != nil {
-			return Token{}, err
-		}
-
-		tok.Literal, tok.Type = lit, tokType
 	default:
 		if unicode.IsLetter(l.char) {
 			lit, tokType, err := l.readIdent()
