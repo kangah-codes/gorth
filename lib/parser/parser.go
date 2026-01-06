@@ -13,6 +13,7 @@ type Parser struct {
 	peekToken       lexer.TokenType
 	peekLiteral     string
 	peekPosition    lexer.Position
+	loopDepth       int
 }
 
 func NewParser(l *lexer.Lexer) *Parser {
@@ -111,10 +112,24 @@ func (p *Parser) parseStatement() (Node, error) {
 	// array literal
 	case lexer.LBRACKET:
 		return p.parseArray()
-	case lexer.IF:
+	// case lexer.DO:
+	// 	return p.parseDoStmt()
+	case lexer.DO:
 		return p.parseIfStmt()
 	case lexer.WHILE:
 		return p.parseWhileStmt()
+	case lexer.BREAK:
+		if p.loopDepth <= 0 {
+			return nil, fmt.Errorf("BREAK can only be used inside a WHILE loop at line %d, col %d",
+				p.currentPosition.Line, p.currentPosition.Column)
+		}
+		return &BreakStmt{Pos: p.currentPosition}, nil
+	case lexer.CONTINUE:
+		if p.loopDepth <= 0 {
+			return nil, fmt.Errorf("CONTINUE can only be used inside a WHILE loop at line %d, col %d",
+				p.currentPosition.Line, p.currentPosition.Column)
+		}
+		return &ContinueStmt{Pos: p.currentPosition}, nil
 	default:
 		return nil, fmt.Errorf("unexpected token %s at line %d, col %d",
 			lexer.TokenMap[p.currentToken], p.currentPosition.Line, p.currentPosition.Column)
@@ -380,11 +395,13 @@ func (p *Parser) parseArray() (Node, error) {
 func (p *Parser) parseIfStmt() (Node, error) {
 	pos := p.currentPosition
 
-	p.nextToken()
+	if err := p.nextToken(); err != nil {
+		return nil, err
+	}
 
 	// then branch should be a series of nodes
 	thenBranch := []Node{}
-	for !p.currentTokenIs(lexer.ELSE) && !p.currentTokenIs(lexer.END) && !p.currentTokenIs(lexer.EOF) {
+	for !p.currentTokenIs(lexer.IF) && !p.currentTokenIs(lexer.ELSE) && !p.currentTokenIs(lexer.END) && !p.currentTokenIs(lexer.EOF) {
 		stmt, err := p.parseStatement()
 		if err != nil {
 			return nil, err
@@ -396,16 +413,21 @@ func (p *Parser) parseIfStmt() (Node, error) {
 		}
 
 		// advance the parser
-		p.nextToken()
+		if err := p.nextToken(); err != nil {
+			return nil, err
+		}
 	}
 
 	// parse optional else
 	var elseBranch []Node
 	if p.currentTokenIs(lexer.ELSE) {
-		// consume else
-		p.nextToken()
+		// consume ELSE
+		if err := p.nextToken(); err != nil {
+			return nil, err
+		}
 
-		for !p.currentTokenIs(lexer.END) && !p.currentTokenIs(lexer.EOF) {
+		// In DO ... ELSE ... IF ... END form, ELSE branch ends at IF
+		for !p.currentTokenIs(lexer.IF) && !p.currentTokenIs(lexer.END) && !p.currentTokenIs(lexer.EOF) {
 			stmt, err := p.parseStatement()
 			if err != nil {
 				return nil, err
@@ -417,7 +439,32 @@ func (p *Parser) parseIfStmt() (Node, error) {
 			}
 
 			// advance the parser
-			p.nextToken()
+			if err := p.nextToken(); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	if !p.currentTokenIs(lexer.IF) {
+		return nil, fmt.Errorf("expected IF before END at line %d, col %d, got %s",
+			p.currentPosition.Line, p.currentPosition.Column, lexer.TokenMap[p.currentToken])
+	}
+
+	// consume IF
+	if err := p.nextToken(); err != nil {
+		return nil, err
+	}
+
+	var condition Node
+	for !p.currentTokenIs(lexer.END) && !p.currentTokenIs(lexer.EOF) {
+		stmt, err := p.parseStatement()
+		if err != nil {
+			return nil, err
+		}
+
+		condition = stmt
+		if err := p.nextToken(); err != nil {
+			return nil, err
 		}
 	}
 
@@ -431,6 +478,7 @@ func (p *Parser) parseIfStmt() (Node, error) {
 		ThenBranch: thenBranch,
 		ElseBranch: elseBranch,
 		Position:   pos,
+		Condition:  condition,
 	}, nil
 
 }
@@ -438,7 +486,12 @@ func (p *Parser) parseIfStmt() (Node, error) {
 func (p *Parser) parseWhileStmt() (Node, error) {
 	pos := p.currentPosition
 
-	p.nextToken()
+	if err := p.nextToken(); err != nil {
+		return nil, err
+	}
+
+	p.loopDepth++
+	defer func() { p.loopDepth-- }()
 
 	body := []Node{}
 	for !p.currentTokenIs(lexer.END) && !p.currentTokenIs(lexer.EOF) {
@@ -451,7 +504,9 @@ func (p *Parser) parseWhileStmt() (Node, error) {
 			body = append(body, stmt)
 		}
 
-		p.nextToken()
+		if err := p.nextToken(); err != nil {
+			return nil, err
+		}
 	}
 
 	if !p.currentTokenIs(lexer.END) {

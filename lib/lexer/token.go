@@ -44,16 +44,18 @@ const (
 	OP_ASSIGN TokenType = "OP_ASSIGN" // =
 
 	// Keywords
-	CONST  TokenType = "CONST"
-	VAR    TokenType = "VAR"
-	PROC   TokenType = "PROC"
-	IN     TokenType = "IN"
-	RETURN TokenType = "RETURN"
-	IF     TokenType = "IF"
-	ELSE   TokenType = "ELSE"
-	END    TokenType = "END"
-	WHILE  TokenType = "WHILE"
-	DO     TokenType = "DO"
+	CONST    TokenType = "CONST"
+	VAR      TokenType = "VAR"
+	PROC     TokenType = "PROC"
+	IN       TokenType = "IN"
+	RETURN   TokenType = "RETURN"
+	IF       TokenType = "IF"
+	ELSE     TokenType = "ELSE"
+	END      TokenType = "END"
+	WHILE    TokenType = "WHILE"
+	DO       TokenType = "DO"
+	BREAK    TokenType = "BREAK"
+	CONTINUE TokenType = "CONTINUE"
 
 	// Stack operations
 	OP_DROP  TokenType = "OP_DROP"
@@ -133,34 +135,38 @@ var TokenMap = map[TokenType]string{
 	END:         "END",
 	WHILE:       "WHILE",
 	DO:          "DO",
+	CONTINUE:    "CONTINUE",
+	BREAK:       "BREAK",
 }
 
 var keywords = map[string]TokenType{
-	"CONST":  CONST,
-	"VAR":    VAR,
-	"PROC":   PROC,
-	"IN":     IN,
-	"RETURN": RETURN,
-	"TRUE":   BOOL,
-	"FALSE":  BOOL,
-	"NULL":   NULL,
-	"DROP":   OP_DROP,
-	"SWAP":   OP_SWAP,
-	"DUP":    OP_DUP,
-	"OVER":   OP_OVER,
-	"ROT":    OP_ROT,
-	"DEL":    OP_DEL,
-	"DUMP":   OP_DUMP,
-	"DUMPLN": OP_DUMPLN,
-	"CLEAR":  OP_CLEAR,
-	"PICK":   OP_PICK,
-	"INC":    OP_INC,
-	"DEC":    OP_DEC,
-	"IF":     IF,
-	"ELSE":   ELSE,
-	"END":    END,
-	"WHILE":  WHILE,
-	"DO":     DO,
+	"CONST":    CONST,
+	"VAR":      VAR,
+	"PROC":     PROC,
+	"IN":       IN,
+	"RETURN":   RETURN,
+	"TRUE":     BOOL,
+	"FALSE":    BOOL,
+	"NULL":     NULL,
+	"DROP":     OP_DROP,
+	"SWAP":     OP_SWAP,
+	"DUP":      OP_DUP,
+	"OVER":     OP_OVER,
+	"ROT":      OP_ROT,
+	"DEL":      OP_DEL,
+	"DUMP":     OP_DUMP,
+	"DUMPLN":   OP_DUMPLN,
+	"CLEAR":    OP_CLEAR,
+	"PICK":     OP_PICK,
+	"INC":      OP_INC,
+	"DEC":      OP_DEC,
+	"IF":       IF,
+	"ELSE":     ELSE,
+	"END":      END,
+	"WHILE":    WHILE,
+	"DO":       DO,
+	"BREAK":    BREAK,
+	"CONTINUE": CONTINUE,
 }
 
 // LookupIdent checks if an identifier is a keyword

@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"errors"
 	"fmt"
 	"gorth/lexer"
 	"gorth/parser"
@@ -8,7 +9,11 @@ import (
 	"math"
 	"os"
 	"strconv"
+	"strings"
 )
+
+var errBreakSignal = errors.New("gorth: break")
+var errContinueSignal = errors.New("gorth: continue")
 
 type GorthRuntime struct {
 	dataStack   *Stack
@@ -98,6 +103,10 @@ func (r *GorthRuntime) executeNode(node parser.Node) error {
 		return r.execIfStmt(n)
 	case *parser.WhileStmt:
 		return r.execWhileStmt(n)
+	case *parser.BreakStmt:
+		return errBreakSignal
+	case *parser.ContinueStmt:
+		return errContinueSignal
 	default:
 		return fmt.Errorf("unknown node type: %T", node)
 	}
@@ -451,9 +460,18 @@ func (r *GorthRuntime) execBinaryOp(n *parser.BinaryExpression) error {
 }
 
 func (r *GorthRuntime) execIfStmt(n *parser.IfStmt) error {
+	// this will add the executed condition onto the stack
+	// I pop it after to consume so it's not harmful for now
+	// but I don't think its clean
+	// TODO: find way to refactor outside stack
+	err := r.executeNode(n.Condition)
+	if err != nil {
+		return err
+	}
+
 	condition, err := r.dataStack.Pop()
 	if err != nil {
-		return fmt.Errorf("IF statement requires condition on stack: %v", err)
+		return err
 	}
 
 	// condition must be boolean
@@ -484,6 +502,14 @@ func (r *GorthRuntime) execWhileStmt(n *parser.WhileStmt) error {
 		// execute body since condition is at end of body
 		for _, stmt := range n.Body {
 			if err := r.executeNode(stmt); err != nil {
+				if errors.Is(err, errContinueSignal) {
+					// skip remaining body statements, proceed to condition check
+					break
+				}
+				if errors.Is(err, errBreakSignal) {
+					// exit the nearest enclosing loop immediately
+					return nil
+				}
 				return err
 			}
 		}
@@ -744,6 +770,21 @@ func (r *GorthRuntime) valueToString(v Value) string {
 		return "FALSE"
 	case TYPE_NULL:
 		return "NULL"
+	case TYPE_ARRAY:
+		// represent array as [elem1, elem2, ...]
+		arr := v.Data.([]Value)
+		var str strings.Builder
+		str.WriteString("[")
+		for i, elem := range arr {
+			str.WriteString(r.valueToString(elem))
+			if i < len(arr)-1 {
+				str.WriteString(", ")
+			}
+		}
+		str.WriteString("]")
+		return str.String()
+	case TYPE_WORD:
+		return "<WORD>"
 	default:
 		return "<UNKNOWN>"
 	}

@@ -1,5 +1,56 @@
-DO
-    HELLO DUMP
-WHILE
-    1 1 + 2 ==
-END
+# primitive types
+# 42 DUMP
+# 3.14 DUMP
+# "Hello, Gorth!" DUMP
+# TRUE DUMP
+# FALSE DUMP
+# [1, 2, 3] DUMP
+
+# basic math
+# 2 3 +
+# 2 3 *
+# 2 3 /
+# 2 3 -
+# 2 3 ^
+# 2 3 %
+# 2 3 MAX
+# 2 3 MIN
+
+# logical operations
+# TRUE TRUE &&
+# TRUE FALSE ||
+
+# comparison operations
+# 2 3 <
+# 2 3 >
+# 2 3 <=
+# 2 3 >=
+# 2 3 ==
+# 2 3 !=
+
+# variable assignment and retrieval
+# 42 := VAR answer
+# answer DUMP
+
+# constant declaration
+CONST PI 3.14
+PI DUMP
+
+# while loop
+# 0 := VAR count
+
+# WHILE
+#     count DUMP
+#     count INC := count
+#     CONTINUE
+#     count 10 <
+# END
+
+# if statement
+# DO
+#     "EQUAL" DUMP
+# ELSE
+#     "NOT EQUAL" DUMP
+# IF 
+#     FALSE
+# END

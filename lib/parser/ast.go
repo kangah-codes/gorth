@@ -104,6 +104,12 @@ func PrintAST(node Node, indent int) string {
 			result.WriteString(PrintAST(n.Value, indent+2))
 		}
 
+	case *BreakStmt:
+		fmt.Fprintf(&result, "%sBreak\n", prefix)
+
+	case *ContinueStmt:
+		fmt.Fprintf(&result, "%sContinue\n", prefix)
+
 	default:
 		fmt.Fprintf(&result, "%sUnknown node type: %T\n", prefix, n)
 	}
@@ -308,6 +314,10 @@ func (c *ConstDeclaration) String() string {
 	return fmt.Sprintf("%-15s %-15s %s", "CONST", c.Name, c.Pos)
 }
 
+type DoStmt struct {
+	Condition Node
+}
+
 type IfStmt struct {
 	Condition  Node
 	ThenBranch []Node
@@ -329,6 +339,24 @@ type WhileStmt struct {
 func (i *WhileStmt) node() {}
 func (i *WhileStmt) String() string {
 	return "WHILE statement"
+}
+
+type BreakStmt struct {
+	Pos lexer.Position
+}
+
+func (b *BreakStmt) node() {}
+func (b *BreakStmt) String() string {
+	return fmt.Sprintf("%-15s %-15s %s", "BREAK", "", b.Pos)
+}
+
+type ContinueStmt struct {
+	Pos lexer.Position
+}
+
+func (c *ContinueStmt) node() {}
+func (c *ContinueStmt) String() string {
+	return fmt.Sprintf("%-15s %-15s %s", "CONTINUE", "", c.Pos)
 }
 
 // SimulateStack shows what the stack looks like as the program executes
@@ -491,6 +519,12 @@ func SimulateStack(program *Program) string {
 			top := stack[len(stack)-1]
 			stack = stack[:len(stack)-1]
 			fmt.Fprintf(&result, "DUMP: output %s (pop)\n", top)
+
+		case *BreakStmt:
+			fmt.Fprintf(&result, "BREAK\n")
+
+		case *ContinueStmt:
+			fmt.Fprintf(&result, "CONTINUE\n")
 
 		default:
 			fmt.Fprintf(&result, "%T\n", stmt)
