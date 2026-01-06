@@ -347,6 +347,27 @@ func SimulateStack(program *Program) string {
 			stack = append(stack, n.Value)
 			fmt.Fprintf(&result, "PUSH %s\n", n.Value)
 
+		case *Assignment:
+			if len(stack) < 1 {
+				fmt.Fprintf(&result, "ERROR: ASSIGN requires 1 value on stack, stack has %d\n", len(stack))
+				break
+			}
+			val := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			fmt.Fprintf(&result, "ASSIGN %s %s\n", n.Name, val)
+
+		case *VarDeclaration:
+			fmt.Fprintf(&result, "DECLARE VAR %s\n", n.Name)
+
+		case *ConstDeclaration:
+			if len(stack) < 1 {
+				fmt.Fprintf(&result, "ERROR: CONST declaration requires 1 value on stack, stack has %d\n", len(stack))
+				break
+			}
+			val := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			fmt.Fprintf(&result, "DECLARE CONST %s %s\n", n.Name, val)
+
 		case *BinaryExpression:
 			if len(stack) < 2 {
 				fmt.Fprintf(&result, "ERROR: %s requires 2 operands, stack has %d\n",

@@ -45,6 +45,26 @@ func (r *GorthRuntime) Execute(program *parser.Program) error {
 	return nil
 }
 
+func (r *GorthRuntime) debug_CurrentStackTo(n int) {
+	// show prev, current and next element on stack up to nth element
+	fmt.Println("Current Stack State:")
+	start := max(n-1, 0)
+	end := n + 1
+	if end >= r.dataStack.Size() {
+		end = r.dataStack.Size() - 1
+	}
+
+	for i := start; i <= end; i++ {
+		val := r.dataStack.items[i]
+		pointer := " "
+		if i == n {
+			pointer = ">"
+		}
+		fmt.Printf("%s [%d] %s: %s\n", pointer, i, r.typeToString(val.Type), r.valueToString(val))
+	}
+	fmt.Println()
+}
+
 func (r *GorthRuntime) executeNode(node parser.Node) error {
 	switch n := node.(type) {
 	case *parser.IntLiteral:
@@ -236,10 +256,13 @@ func (r *GorthRuntime) execStackOp(n *parser.StackOp) error {
 }
 
 func (r *GorthRuntime) execAssignment(n *parser.Assignment) error {
+	r.debug_CurrentStackTo(5)
 	val, err := r.dataStack.Pop()
 	if err != nil {
 		return err
 	}
+
+	fmt.Printf("Assigning to %s value %s (%s)\n", n.Name, r.valueToString(val), r.typeToString(val.Type))
 
 	// check if its a const
 	if _, ok := r.constants[n.Name]; ok {
@@ -312,7 +335,7 @@ func (r *GorthRuntime) execIdentifier(n *parser.Identifier) error {
 	}
 
 	// If identifier is undefined, push its name as a string
-	// This allows it to be used for assignment: value identifier ->
+	// This allows it to be used for assignment: value identifier :=
 	return r.dataStack.Push(Value{Type: TYPE_STR, Data: n.Value})
 }
 

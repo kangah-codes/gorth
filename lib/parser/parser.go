@@ -271,12 +271,12 @@ func (p *Parser) parseAssignment() (Node, error) {
 	pos := p.currentPosition
 
 	// Next token MUST be an identifier (variable name)
-	p.nextToken()
+	// p.nextToken()
 
-	if !p.currentTokenIs(lexer.IDENT) {
-		return nil, fmt.Errorf("expected identifier after '->' at line %d, col %d, got %s",
-			p.currentPosition.Line, p.currentPosition.Column, lexer.TokenMap[p.currentToken])
-	}
+	// if !p.currentTokenIs(lexer.IDENT) {
+	// 	return nil, fmt.Errorf("expected identifier after ':=' at line %d, col %d, got %s",
+	// 		p.currentPosition.Line, p.currentPosition.Column, lexer.TokenMap[p.currentToken])
+	// }
 
 	varName := p.currentLiteral
 

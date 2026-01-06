@@ -335,21 +335,8 @@ func (l *Lexer) NextToken() (Token, error) {
 		tok.Type = OP_PLUS
 		tok.Literal = string(l.char)
 	case '-':
-		peek, err := l.peekChar()
-		if err != nil {
-			return Token{}, err
-		}
-
-		// means we are assigning a value to a var
-		if peek == '>' {
-			char := l.char
-			l.readChar()
-			tok.Type = OP_ASSIGN
-			tok.Literal = string(char) + string(l.char)
-		} else {
-			tok.Type = OP_SUBTRACT
-			tok.Literal = string(l.char)
-		}
+		tok.Type = OP_SUBTRACT
+		tok.Literal = string(l.char)
 	case '*':
 		tok.Literal = string(l.char)
 		// else it's just a multiply
@@ -458,6 +445,20 @@ func (l *Lexer) NextToken() (Token, error) {
 	case ',':
 		tok.Type = COMMA
 		tok.Literal = string(l.char)
+	case ':':
+		peek, err := l.peekChar()
+		if err != nil {
+			return Token{}, nil
+		}
+		if peek == '=' {
+			// char := l.char
+			l.readChar()
+			tok.Type = OP_ASSIGN
+			tok.Literal = ":="
+		} else {
+			tok.Type = ILLEGAL
+			tok.Literal = string(l.char)
+		}
 	case '"':
 		lit, tokType, err := l.readSinglelineString()
 		if err != nil {

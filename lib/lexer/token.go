@@ -107,7 +107,7 @@ var TokenMap = map[TokenType]string{
 	OP_AND:      "&&",
 	OP_OR:       "||",
 	OP_NOT:      "!",
-	OP_ASSIGN:   "->",
+	OP_ASSIGN:   ":=",
 	CONST:       "CONST",
 	VAR:         "VAR",
 	PROC:        "PROC",
