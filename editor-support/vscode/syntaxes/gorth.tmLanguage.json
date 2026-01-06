@@ -91,7 +91,7 @@
 			"patterns": [
 				{
 					"name": "keyword.other.io.gorth",
-					"match": "\\bDUMP\\b"
+					"match": "\\b(DUMP|DUMPLN)\\b"
 				}
 			]
 		},

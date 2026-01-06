@@ -1,1 +1,5 @@
-1000 := VAR x
+DO
+    HELLO DUMP
+WHILE
+    1 1 + 2 ==
+END

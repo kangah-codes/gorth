@@ -44,17 +44,16 @@ const (
 	OP_ASSIGN TokenType = "OP_ASSIGN" // =
 
 	// Keywords
-	CONST   TokenType = "CONST"
-	VAR     TokenType = "VAR"
-	PROC    TokenType = "PROC"
-	ENDPROC TokenType = "ENDPROC"
-	IN      TokenType = "IN"
-	RETURN  TokenType = "RETURN"
-	IF      TokenType = "IF"
-	ELIF    TokenType = "ELIF"
-	ELSE    TokenType = "ELSE"
-	END     TokenType = "END"
-	WHILE   TokenType = "WHILE"
+	CONST  TokenType = "CONST"
+	VAR    TokenType = "VAR"
+	PROC   TokenType = "PROC"
+	IN     TokenType = "IN"
+	RETURN TokenType = "RETURN"
+	IF     TokenType = "IF"
+	ELSE   TokenType = "ELSE"
+	END    TokenType = "END"
+	WHILE  TokenType = "WHILE"
+	DO     TokenType = "DO"
 
 	// Stack operations
 	OP_DROP  TokenType = "OP_DROP"
@@ -69,7 +68,8 @@ const (
 	OP_PICK  TokenType = "OP_PICK"
 
 	// I/O
-	OP_DUMP TokenType = "OP_DUMP"
+	OP_DUMP   TokenType = "OP_DUMP"
+	OP_DUMPLN TokenType = "OP_DUMPLN"
 
 	// Delimiters
 	LBRACKET TokenType = "LBRACKET" // [
@@ -111,7 +111,6 @@ var TokenMap = map[TokenType]string{
 	CONST:       "CONST",
 	VAR:         "VAR",
 	PROC:        "PROC",
-	ENDPROC:     "ENDPROC",
 	IN:          "IN",
 	RETURN:      "RETURN",
 	OP_DROP:     "DROP",
@@ -123,6 +122,7 @@ var TokenMap = map[TokenType]string{
 	OP_INC:      "INC",
 	OP_DEC:      "DEC",
 	OP_DUMP:     "DUMP",
+	OP_DUMPLN:   "DUMPLN",
 	OP_CLEAR:    "CLEAR",
 	OP_PICK:     "PICK",
 	LBRACKET:    "[",
@@ -132,33 +132,35 @@ var TokenMap = map[TokenType]string{
 	ELSE:        "ELSE",
 	END:         "END",
 	WHILE:       "WHILE",
+	DO:          "DO",
 }
 
 var keywords = map[string]TokenType{
-	"CONST":   CONST,
-	"VAR":     VAR,
-	"PROC":    PROC,
-	"ENDPROC": ENDPROC,
-	"IN":      IN,
-	"RETURN":  RETURN,
-	"TRUE":    BOOL,
-	"FALSE":   BOOL,
-	"NULL":    NULL,
-	"DROP":    OP_DROP,
-	"SWAP":    OP_SWAP,
-	"DUP":     OP_DUP,
-	"OVER":    OP_OVER,
-	"ROT":     OP_ROT,
-	"DEL":     OP_DEL,
-	"DUMP":    OP_DUMP,
-	"CLEAR":   OP_CLEAR,
-	"PICK":    OP_PICK,
-	"INC":     OP_INC,
-	"DEC":     OP_DEC,
-	"IF":      IF,
-	"ELSE":    ELSE,
-	"END":     END,
-	"WHILE":   WHILE,
+	"CONST":  CONST,
+	"VAR":    VAR,
+	"PROC":   PROC,
+	"IN":     IN,
+	"RETURN": RETURN,
+	"TRUE":   BOOL,
+	"FALSE":  BOOL,
+	"NULL":   NULL,
+	"DROP":   OP_DROP,
+	"SWAP":   OP_SWAP,
+	"DUP":    OP_DUP,
+	"OVER":   OP_OVER,
+	"ROT":    OP_ROT,
+	"DEL":    OP_DEL,
+	"DUMP":   OP_DUMP,
+	"DUMPLN": OP_DUMPLN,
+	"CLEAR":  OP_CLEAR,
+	"PICK":   OP_PICK,
+	"INC":    OP_INC,
+	"DEC":    OP_DEC,
+	"IF":     IF,
+	"ELSE":   ELSE,
+	"END":    END,
+	"WHILE":  WHILE,
+	"DO":     DO,
 }
 
 // LookupIdent checks if an identifier is a keyword

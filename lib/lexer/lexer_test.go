@@ -420,11 +420,6 @@ func TestClassifyIdent(t *testing.T) {
 			expectedToken: PROC,
 		},
 		{
-			name:          "classify endproc keyword",
-			input:         "ENDPROC",
-			expectedToken: ENDPROC,
-		},
-		{
 			name:          "classify in keyword",
 			input:         "IN",
 			expectedToken: IN,
@@ -1171,17 +1166,6 @@ func TestNextToken(t *testing.T) {
 			expectedTokens: []Token{
 				{Type: VAR, Literal: "$myvar", Pos: Position{Line: 1, Column: 1}},
 				{Type: EOF, Literal: "", Pos: Position{Line: 1, Column: 7}},
-			},
-		},
-		{
-			name:  "identifiers and keywords",
-			input: "true false proc endproc",
-			expectedTokens: []Token{
-				{Type: BOOL, Literal: "true", Pos: Position{Line: 1, Column: 1}},
-				{Type: BOOL, Literal: "false", Pos: Position{Line: 1, Column: 6}},
-				{Type: PROC, Literal: "proc", Pos: Position{Line: 1, Column: 12}},
-				{Type: ENDPROC, Literal: "endproc", Pos: Position{Line: 1, Column: 17}},
-				{Type: EOF, Literal: "", Pos: Position{Line: 1, Column: 24}},
 			},
 		},
 		{

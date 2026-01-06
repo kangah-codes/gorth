@@ -335,8 +335,29 @@ func (l *Lexer) NextToken() (Token, error) {
 		tok.Type = OP_PLUS
 		tok.Literal = string(l.char)
 	case '-':
-		tok.Type = OP_SUBTRACT
-		tok.Literal = string(l.char)
+		peek, err := l.peekChar()
+		if err != nil {
+			return Token{}, err
+		}
+
+		if unicode.IsDigit(peek) {
+			lit, tokType, err := l.readNumber()
+			if err != nil {
+				return Token{}, err
+			}
+
+			switch tokType {
+			case INT:
+				tok.Type = INT
+			case FLOAT:
+				tok.Type = FLOAT
+			}
+
+			tok.Literal = lit
+		} else {
+			tok.Type = OP_SUBTRACT
+			tok.Literal = string(l.char)
+		}
 	case '*':
 		tok.Literal = string(l.char)
 		// else it's just a multiply

@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"gorth/lexer"
 	"gorth/parser"
+	"io"
 	"math"
+	"os"
 	"strconv"
 )
 
@@ -16,17 +18,19 @@ type GorthRuntime struct {
 	words       map[string]*Word
 	memory      []Value
 	halted      bool
+	out         io.Writer
 }
 
 func NewRuntime() *GorthRuntime {
 	return &GorthRuntime{
-		dataStack:   &Stack{items: make([]Value, 0), max: 999_999_999},
-		returnStack: &Stack{items: make([]Value, 0), max: 999_999_999},
+		dataStack:   &Stack{items: make([]Value, 0), max: 100},
+		returnStack: &Stack{items: make([]Value, 0), max: 100},
 		variables:   make(map[string]Value),
 		constants:   make(map[string]Value),
 		words:       make(map[string]*Word),
 		memory:      make([]Value, 0),
 		halted:      false,
+		out:         os.Stdout,
 	}
 }
 
@@ -45,19 +49,14 @@ func (r *GorthRuntime) Execute(program *parser.Program) error {
 	return nil
 }
 
-func (r *GorthRuntime) debug_CurrentStackTo(n int) {
+func (r *GorthRuntime) debug_CurrentStack() {
 	// show prev, current and next element on stack up to nth element
 	fmt.Println("Current Stack State:")
-	start := max(n-1, 0)
-	end := n + 1
-	if end >= r.dataStack.Size() {
-		end = r.dataStack.Size() - 1
-	}
 
-	for i := start; i <= end; i++ {
+	for i := range r.dataStack.items {
 		val := r.dataStack.items[i]
 		pointer := " "
-		if i == n {
+		if i == len(r.dataStack.items) {
 			pointer = ">"
 		}
 		fmt.Printf("%s [%d] %s: %s\n", pointer, i, r.typeToString(val.Type), r.valueToString(val))
@@ -152,14 +151,11 @@ func (r *GorthRuntime) execUnaryOp(n *parser.UnaryExpression) error {
 			return fmt.Errorf("DEC requires numeric type, got %s", r.typeToString(val.Type))
 		}
 
-	case lexer.OP_DUMP:
-		// DUMP prints and leaves value on stack
-		fmt.Println(r.valueToString(val))
-		return r.dataStack.Push(val)
-
 	default:
 		return fmt.Errorf("unknown unary operator: %s", lexer.TokenMap[n.Operator])
 	}
+
+	fmt.Printf("RESULT TO PUSH: %v\n", result)
 
 	return r.dataStack.Push(result)
 }
@@ -256,25 +252,58 @@ func (r *GorthRuntime) execStackOp(n *parser.StackOp) error {
 }
 
 func (r *GorthRuntime) execAssignment(n *parser.Assignment) error {
-	r.debug_CurrentStackTo(5)
 	val, err := r.dataStack.Pop()
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("Assigning to %s value %s (%s)\n", n.Name, r.valueToString(val), r.typeToString(val.Type))
+	var name string
+	declare := false
 
-	// check if its a const
-	if _, ok := r.constants[n.Name]; ok {
-		return fmt.Errorf("cannot reassign value to const %s", n.Name)
+	switch target := n.Target.(type) {
+	case *parser.Identifier:
+		name = target.Value
+	case *parser.VarDeclaration:
+		name = target.Name
+		declare = true
+	case *parser.ConstDeclaration:
+		name = target.Name
+		declare = true
+	default:
+		return fmt.Errorf("invalid assignment target: %T", n.Target)
 	}
 
-	// check if variable exists
-	if _, ok := r.variables[n.Name]; !ok {
-		return fmt.Errorf("undefined variable %s", n.Name)
+	// Cannot assign to const
+	if _, ok := r.constants[name]; ok {
+		return fmt.Errorf("cannot reassign value to const %s", name)
 	}
 
-	r.variables[n.Name] = val
+	if declare {
+		switch n.Target.(type) {
+		case *parser.VarDeclaration:
+			// Inline declaration form: value := VAR x
+			if _, ok := r.variables[name]; ok {
+				return fmt.Errorf("variable already declared: %s", name)
+			}
+			r.variables[name] = val
+		case *parser.ConstDeclaration:
+			// Inline declaration form: value := VAR x
+			if _, ok := r.constants[name]; ok {
+				return fmt.Errorf("variable already declared: %s", name)
+			}
+			r.constants[name] = val
+		default:
+			return fmt.Errorf("invalid assignment target: %T", n.Target)
+		}
+		return nil
+	}
+
+	// Regular assignment: value := x (requires x to exist)
+	if _, ok := r.variables[name]; !ok {
+		return fmt.Errorf("undefined variable %s", name)
+	}
+
+	r.variables[name] = val
 	return nil
 }
 
@@ -347,7 +376,9 @@ func (r *GorthRuntime) execIOStmt(n *parser.IOStmt) error {
 
 	switch n.Kind {
 	case lexer.OP_DUMP:
-		fmt.Print(r.valueToString(val))
+		fmt.Fprint(r.out, r.valueToString(val))
+	case lexer.OP_DUMPLN:
+		fmt.Fprintln(r.out, r.valueToString(val))
 	}
 
 	return nil
@@ -476,7 +507,7 @@ func (r *GorthRuntime) execWhileStmt(n *parser.WhileStmt) error {
 
 func (r *GorthRuntime) not(op Value) (Value, error) {
 	if op.Type != TYPE_BOOL {
-		return Value{}, fmt.Errorf("cannot use not operation on non-boolean type: %s", op.Type)
+		return Value{}, fmt.Errorf("cannot use not operation on non-boolean type: %s", r.typeToString(op.Type))
 	}
 
 	return Value{Type: TYPE_BOOL, Data: !op.Data.(bool)}, nil
@@ -484,7 +515,7 @@ func (r *GorthRuntime) not(op Value) (Value, error) {
 
 func (r *GorthRuntime) inc(op Value) (Value, error) {
 	if op.Type != TYPE_INT {
-		return Value{}, fmt.Errorf("cannot use inc operation on non-int type: %s", op.Type)
+		return Value{}, fmt.Errorf("cannot use inc operation on non-int type: %s", r.typeToString(op.Type))
 	}
 
 	return Value{Type: TYPE_INT, Data: op.Data.(int) + 1}, nil
@@ -492,7 +523,7 @@ func (r *GorthRuntime) inc(op Value) (Value, error) {
 
 func (r *GorthRuntime) dec(op Value) (Value, error) {
 	if op.Type != TYPE_INT {
-		return Value{}, fmt.Errorf("cannot use dec operation on non-int type: %s", op.Type)
+		return Value{}, fmt.Errorf("cannot use dec operation on non-int type: %s", r.typeToString(op.Type))
 	}
 
 	return Value{Type: TYPE_INT, Data: op.Data.(int) - 1}, nil
@@ -505,7 +536,7 @@ func (r *GorthRuntime) add(left, right Value) (Value, error) {
 	if !isLeftNumeric || !isRightNumeric {
 		return Value{}, fmt.Errorf(
 			"cannot add %s and %s",
-			left.Type, right.Type,
+			r.typeToString(left.Type), r.typeToString(right.Type),
 		)
 	}
 
@@ -530,7 +561,7 @@ func (r *GorthRuntime) subtract(left, right Value) (Value, error) {
 	if !isLeftNumeric || !isRightNumeric {
 		return Value{}, fmt.Errorf(
 			"cannot subtract %s and %s",
-			left.Type, right.Type,
+			r.typeToString(left.Type), r.typeToString(right.Type),
 		)
 	}
 
@@ -554,7 +585,7 @@ func (r *GorthRuntime) multiply(left, right Value) (Value, error) {
 	if !isLeftNumeric || !isRightNumeric {
 		return Value{}, fmt.Errorf(
 			"cannot multiple %s and %s",
-			left.Type, right.Type,
+			r.typeToString(left.Type), r.typeToString(right.Type),
 		)
 	}
 
@@ -578,7 +609,7 @@ func (r *GorthRuntime) divide(left, right Value) (Value, error) {
 	if !isLeftNumeric || !isRightNumeric {
 		return Value{}, fmt.Errorf(
 			"cannot divide %s and %s",
-			left.Type, right.Type,
+			r.typeToString(left.Type), r.typeToString(right.Type),
 		)
 	}
 
@@ -595,7 +626,7 @@ func (r *GorthRuntime) power(left, right Value) (Value, error) {
 	if !isLeftNumeric || !isRightNumeric {
 		return Value{}, fmt.Errorf(
 			"cannot exponentiate %s and %s",
-			left.Type, right.Type,
+			r.typeToString(left.Type), r.typeToString(right.Type),
 		)
 	}
 
@@ -669,7 +700,7 @@ func (r *GorthRuntime) modulo(left, right Value) (Value, error) {
 	if !isLeftNumeric || !isRightNumeric {
 		return Value{}, fmt.Errorf(
 			"cannot subtract %s and %s",
-			left.Type, right.Type,
+			r.typeToString(left.Type), r.typeToString(right.Type),
 		)
 	}
 
@@ -701,17 +732,20 @@ func (r *GorthRuntime) toFloat(v Value) float64 {
 func (r *GorthRuntime) valueToString(v Value) string {
 	switch v.Type {
 	case TYPE_INT:
-		return fmt.Sprintf("%d", v.Data.(int))
+		return strconv.Itoa(v.Data.(int))
 	case TYPE_FLOAT:
-		return fmt.Sprintf("%f", v.Data.(float64))
+		return strconv.FormatFloat(v.Data.(float64), 'f', -1, 64)
 	case TYPE_STR:
 		return v.Data.(string)
 	case TYPE_BOOL:
-		return fmt.Sprintf("%t", v.Data.(bool))
+		if v.Data.(bool) {
+			return "TRUE"
+		}
+		return "FALSE"
 	case TYPE_NULL:
-		return "null"
+		return "NULL"
 	default:
-		return fmt.Sprintf("%v", v.Data)
+		return "<UNKNOWN>"
 	}
 }
 

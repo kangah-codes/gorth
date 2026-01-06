@@ -84,7 +84,7 @@ func (p *Parser) parseStatement() (Node, error) {
 	case lexer.VAR:
 		return p.parseVarDeclaration()
 	case lexer.CONST:
-		return p.parseConstDeclaration()
+		return p.parseConstDefinition()
 	case lexer.IDENT:
 		return p.parseIdentLiteral()
 	case lexer.NULL:
@@ -101,7 +101,7 @@ func (p *Parser) parseStatement() (Node, error) {
 	case lexer.OP_DROP, lexer.OP_SWAP, lexer.OP_DUP, lexer.OP_OVER, lexer.OP_ROT, lexer.OP_DEL, lexer.OP_CLEAR, lexer.OP_PICK:
 		return p.parseStackOp()
 	// io operations
-	case lexer.OP_DUMP:
+	case lexer.OP_DUMP, lexer.OP_DUMPLN:
 		return p.parseIOOP()
 	case lexer.OP_ASSIGN:
 		return p.parseAssignment()
@@ -222,9 +222,12 @@ func (p *Parser) parseVarDeclaration() (Node, error) {
 }
 
 func (p *Parser) parseConstDeclaration() (Node, error) {
-	// CONST constName value
+	// CONST constName
+	// NOTE: This parses a CONST *target* (used by ':='), not a full const definition.
 	pos := p.currentPosition
-	p.nextToken() // move to identifier
+	if err := p.nextToken(); err != nil {
+		return nil, err
+	}
 
 	if !p.currentTokenIs(lexer.IDENT) {
 		return nil, fmt.Errorf("expected identifier after CONST at line %d, col %d",
@@ -232,30 +235,58 @@ func (p *Parser) parseConstDeclaration() (Node, error) {
 	}
 
 	constName := p.currentLiteral
-	p.nextToken() // move to value
 
-	// Parse the value (could be any literal)
-	var value Node
-	var err error
+	return &ConstDeclaration{
+		Name: constName,
+		Pos:  pos,
+		// Value intentionally omitted for inline target form
+	}, nil
+}
 
-	switch p.currentToken {
-	case lexer.INT:
-		value, err = p.parseIntLiteral()
-	case lexer.FLOAT:
-		value, err = p.parseFloatLiteral()
-	case lexer.STRING:
-		value, err = p.parseStrLiteral()
-	case lexer.BOOL:
-		value, err = p.parseBoolLiteral()
-	case lexer.NULL:
-		value, err = p.parseNullLiteral()
-	default:
-		return nil, fmt.Errorf("expected literal value after const name at line %d, col %d",
+func (p *Parser) parseConstDefinition() (Node, error) {
+	// CONST constName value
+	pos := p.currentPosition
+	if err := p.nextToken(); err != nil {
+		return nil, err
+	}
+
+	if !p.currentTokenIs(lexer.IDENT) {
+		return nil, fmt.Errorf("expected identifier after CONST at line %d, col %d",
 			p.currentPosition.Line, p.currentPosition.Column)
 	}
 
-	if err != nil {
+	constName := p.currentLiteral
+
+	if err := p.nextToken(); err != nil {
 		return nil, err
+	}
+
+	if p.currentTokenIs(lexer.EOF) {
+		return nil, fmt.Errorf("CONST %s requires an assigned value at declaration (e.g. CONST %s 10) at line %d, col %d",
+			constName, constName, pos.Line, pos.Column)
+	}
+
+	var value Node
+	switch p.currentToken {
+	case lexer.INT:
+		value = &IntLiteral{Value: p.currentLiteral, Position: p.currentPosition, Token: p.currentToken}
+	case lexer.FLOAT:
+		value = &FloatLiteral{Value: p.currentLiteral, Position: p.currentPosition, Token: p.currentToken}
+	case lexer.STRING:
+		value = &StringLiteral{Value: p.currentLiteral, Position: p.currentPosition, Token: p.currentToken}
+	case lexer.BOOL:
+		value = &BoolLiteral{Value: p.currentLiteral, Position: p.currentPosition, Token: p.currentToken}
+	case lexer.NULL:
+		value = &NullLiteral{Value: p.currentLiteral, Position: p.currentPosition, Token: p.currentToken}
+	case lexer.LBRACKET:
+		arr, err := p.parseArray()
+		if err != nil {
+			return nil, err
+		}
+		value = arr
+	default:
+		return nil, fmt.Errorf("expected literal value after CONST %s at line %d, col %d, got %s",
+			constName, p.currentPosition.Line, p.currentPosition.Column, lexer.TokenMap[p.currentToken])
 	}
 
 	return &ConstDeclaration{
@@ -267,22 +298,43 @@ func (p *Parser) parseConstDeclaration() (Node, error) {
 
 // assignment and special ops
 func (p *Parser) parseAssignment() (Node, error) {
-	// Current token is OP_ASSIGN (->)
+	// current token is OP_ASSIGN :=
 	pos := p.currentPosition
 
-	// Next token MUST be an identifier (variable name)
-	// p.nextToken()
+	if err := p.nextToken(); err != nil {
+		return nil, err
+	}
 
-	// if !p.currentTokenIs(lexer.IDENT) {
-	// 	return nil, fmt.Errorf("expected identifier after ':=' at line %d, col %d, got %s",
-	// 		p.currentPosition.Line, p.currentPosition.Column, lexer.TokenMap[p.currentToken])
-	// }
-
-	varName := p.currentLiteral
+	var target Node
+	switch p.currentToken {
+	case lexer.VAR:
+		// inline declaration target
+		t, err := p.parseVarDeclaration()
+		if err != nil {
+			return nil, err
+		}
+		target = t
+	case lexer.CONST:
+		// inline const declaration target
+		t, err := p.parseConstDeclaration()
+		if err != nil {
+			return nil, err
+		}
+		target = t
+	case lexer.IDENT:
+		target = &Identifier{
+			Value:    p.currentLiteral,
+			Position: p.currentPosition,
+			Token:    p.currentToken,
+		}
+	default:
+		return nil, fmt.Errorf("expected identifier, VAR, or CONST after ':=' at line %d, col %d, got %s",
+			p.currentPosition.Line, p.currentPosition.Column, lexer.TokenMap[p.currentToken])
+	}
 
 	return &Assignment{
-		Name: varName,
-		Pos:  pos,
+		Target: target,
+		Pos:    pos,
 	}, nil
 }
 

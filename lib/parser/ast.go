@@ -70,9 +70,13 @@ func PrintAST(node Node, indent int) string {
 		fmt.Fprintf(&result, "%sStackOp (%s)\n", prefix, lexer.TokenMap[n.Operation])
 
 	case *Assignment:
-		fmt.Fprintf(&result, "%sAssignment (name: %s):\n", prefix, n.Name)
-		result.WriteString(prefix + "  Value:\n")
-		result.WriteString(PrintAST(n.Value, indent+2))
+		fmt.Fprintf(&result, "%sAssignment:\n", prefix)
+		result.WriteString(prefix + "  Target:\n")
+		if n.Target != nil {
+			result.WriteString(PrintAST(n.Target, indent+2))
+		} else {
+			result.WriteString(prefix + "    <missing target>\n")
+		}
 
 	case *IOStmt:
 		fmt.Fprintf(&result, "%sPrint (%s):\n", prefix, lexer.TokenMap[n.Kind])
@@ -92,9 +96,13 @@ func PrintAST(node Node, indent int) string {
 		fmt.Fprintf(&result, "%sVarDecl (name: %s)\n", prefix, n.Name)
 
 	case *ConstDeclaration:
-		fmt.Fprintf(&result, "%sConstDecl (name: %s):\n", prefix, n.Name)
-		result.WriteString(prefix + "  Value:\n")
-		result.WriteString(PrintAST(n.Value, indent+2))
+		if n.Value == nil {
+			fmt.Fprintf(&result, "%sConstDeclTarget (name: %s)\n", prefix, n.Name)
+		} else {
+			fmt.Fprintf(&result, "%sConstDecl (name: %s):\n", prefix, n.Name)
+			result.WriteString(prefix + "  Value:\n")
+			result.WriteString(PrintAST(n.Value, indent+2))
+		}
 
 	default:
 		fmt.Fprintf(&result, "%sUnknown node type: %T\n", prefix, n)
@@ -218,17 +226,25 @@ func (s *StackOp) String() string {
 
 // Variable assignment
 type Assignment struct {
-	Name  string
-	Value Node
-	// TODO: may add const variables later on
-	// just keeping this here
-	IsConst bool
-	Pos     lexer.Position
+	Target Node
+	Pos    lexer.Position
 }
 
 func (a *Assignment) node() {}
 func (a *Assignment) String() string {
-	return fmt.Sprintf("%-15s %-15s %s", lexer.OP_ASSIGN, a.Name, a.Pos)
+	var target string
+	switch t := a.Target.(type) {
+	case *Identifier:
+		target = t.Value
+	case *VarDeclaration:
+		target = "VAR " + t.Name
+	case *ConstDeclaration:
+		target = "CONST " + t.Name
+	default:
+		target = "<unknown>"
+	}
+
+	return fmt.Sprintf("%-15s %-15s %s", lexer.OP_ASSIGN, target, a.Pos)
 }
 
 // Print/Println/Dump
@@ -354,19 +370,24 @@ func SimulateStack(program *Program) string {
 			}
 			val := stack[len(stack)-1]
 			stack = stack[:len(stack)-1]
-			fmt.Fprintf(&result, "ASSIGN %s %s\n", n.Name, val)
+			target := "<unknown>"
+			switch t := n.Target.(type) {
+			case *Identifier:
+				target = t.Value
+			case *VarDeclaration:
+				target = "VAR " + t.Name
+			}
+			fmt.Fprintf(&result, "ASSIGN %s %s\n", target, val)
 
 		case *VarDeclaration:
 			fmt.Fprintf(&result, "DECLARE VAR %s\n", n.Name)
 
 		case *ConstDeclaration:
-			if len(stack) < 1 {
-				fmt.Fprintf(&result, "ERROR: CONST declaration requires 1 value on stack, stack has %d\n", len(stack))
-				break
+			if n.Value == nil {
+				fmt.Fprintf(&result, "DECLARE CONST (missing value) %s\n", n.Name)
+			} else {
+				fmt.Fprintf(&result, "DECLARE CONST %s\n", n.Name)
 			}
-			val := stack[len(stack)-1]
-			stack = stack[:len(stack)-1]
-			fmt.Fprintf(&result, "DECLARE CONST %s %s\n", n.Name, val)
 
 		case *BinaryExpression:
 			if len(stack) < 2 {
