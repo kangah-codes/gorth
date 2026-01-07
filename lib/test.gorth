@@ -43,22 +43,22 @@
 # PI DUMP
 
 # while loop
-0 := VAR count
+# 0 := VAR count
 
-DO
-    count INC := count
-    DO
-        "Count has reached " count + DUMPLN
-        BREAK
-    ELSE
-        "Count has not reached " count + " yet" + DUMPLN
-        CONTINUE
-    IF
-        count 5 ==
-    END
-WHILE
-    count 10 <
-END
+# DO
+#     count INC := count
+#     DO
+#         "Count has reached " count + DUMPLN
+#         BREAK
+#     ELSE
+#         "Count has not reached " count + " yet" + DUMPLN
+#         CONTINUE
+#     IF
+#         count 5 ==
+#     END
+# WHILE
+#     count 10 <
+# END
 
 # if statement
 # DO
@@ -68,3 +68,5 @@ END
 # IF 
 #     FALSE
 # END
+
+0 := 0

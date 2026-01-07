@@ -74,9 +74,11 @@ const (
 	OP_DUMPLN TokenType = "OP_DUMPLN"
 
 	// Delimiters
-	LBRACKET TokenType = "LBRACKET" // [
-	RBRACKET TokenType = "RBRACKET" // ]
-	COMMA    TokenType = "COMMA"    // ,
+	LBRACKET      TokenType = "LBRACKET"      // [
+	RBRACKET      TokenType = "RBRACKET"      // ]
+	COMMA         TokenType = "COMMA"         // ,
+	LCURL_BRACKET TokenType = "LCURL_BRACKET" // {
+	RCURL_BRACKET TokenType = "RCURL_BRACKET" // }
 )
 
 type Token struct {
