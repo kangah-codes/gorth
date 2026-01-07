@@ -255,6 +255,16 @@ func (p *Procedure) String() string {
 	return p.Name
 }
 
+type CallStmt struct {
+	ProcName string
+	Pos      lexer.Position
+}
+
+func (p *CallStmt) node() {}
+func (p *CallStmt) String() string {
+	return fmt.Sprintf("Procedure %s call", p.ProcName)
+}
+
 // Variable assignment
 type Assignment struct {
 	Target Node

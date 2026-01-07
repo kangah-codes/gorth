@@ -113,7 +113,9 @@ func (r *GorthRuntime) executeNode(node parser.Node) error {
 	case *parser.ContinueStmt:
 		return errContinueSignal
 	case *parser.Procedure:
-		return r.execProcedure(n)
+		return r.execAddProcedure(n)
+	case *parser.CallStmt:
+		return r.execProcBody(n)
 	default:
 		return fmt.Errorf("unknown node type: %T", node)
 	}
@@ -361,6 +363,14 @@ func (r *GorthRuntime) execFloatLiteral(n *parser.FloatLiteral) error {
 }
 
 func (r *GorthRuntime) execIdentifier(n *parser.Identifier) error {
+	// check the callstack first for an identifier
+	if len(r.callStack) > 0 {
+		topFrame := r.callStack[len(r.callStack)-1]
+		if val, ok := topFrame.locals[n.Value]; ok {
+			return r.dataStack.Push(val)
+		}
+	}
+
 	// check if its a variable
 	if val, ok := r.variables[n.Value]; ok {
 		return r.dataStack.Push(val)
@@ -546,13 +556,53 @@ func (r *GorthRuntime) execWhileStmt(n *parser.WhileStmt) error {
 	return nil
 }
 
-func (r *GorthRuntime) execProcedure(n *parser.Procedure) error {
+func (r *GorthRuntime) execAddProcedure(n *parser.Procedure) error {
 	r.procedures[n.Name] = n
 
 	for _, param := range n.Parameters {
 		// declare parameters as variables with null values
 		r.variables[param.Name] = Value{Type: TYPE_NULL, Data: nil}
 	}
+
+	return nil
+}
+
+func (r *GorthRuntime) execProcBody(n *parser.CallStmt) error {
+	if _, ok := r.procedures[n.ProcName]; !ok {
+		return fmt.Errorf("procedure %s is not defined", n.ProcName)
+	}
+
+	procedure := r.procedures[n.ProcName]
+	parameterLength := len(procedure.Parameters)
+
+	if r.dataStack.Size() < parameterLength {
+		return fmt.Errorf("stack underflow")
+	}
+
+	args, err := popN(r.dataStack, parameterLength)
+	if err != nil {
+		return err
+	}
+
+	localFrame := Frame{
+		locals: make(map[string]Value),
+	}
+
+	for i, param := range procedure.Parameters {
+		localFrame.locals[param.Name] = *args[i]
+	}
+
+	// add frame to callstack
+	r.callStack = append(r.callStack, &localFrame)
+
+	// execute procedure body
+	for _, stmt := range procedure.Body {
+		if err := r.executeNode(stmt); err != nil {
+			return err
+		}
+	}
+
+	r.callStack = r.callStack[:len(r.callStack)-1]
 
 	return nil
 }
@@ -902,4 +952,22 @@ func isNumeric(t ValueType) bool {
 
 func isBool(t ValueType) bool {
 	return t == TYPE_BOOL
+}
+
+func popN(stack *Stack, n int) ([]*Value, error) {
+	if len(stack.items) < n {
+		return []*Value{}, fmt.Errorf("not enough values on the stack")
+	}
+
+	values := make([]*Value, n)
+
+	for i := n - 1; i >= 0; i-- {
+		val, err := stack.Pop()
+		if err != nil {
+			return []*Value{}, err
+		}
+		values[i] = &val
+	}
+
+	return values, nil
 }

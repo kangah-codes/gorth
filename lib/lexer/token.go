@@ -56,6 +56,7 @@ const (
 	DO       TokenType = "DO"
 	BREAK    TokenType = "BREAK"
 	CONTINUE TokenType = "CONTINUE"
+	CALL     TokenType = "CALL"
 
 	// Stack operations
 	OP_DROP  TokenType = "OP_DROP"
@@ -141,6 +142,7 @@ var TokenMap = map[TokenType]string{
 	DO:              "DO",
 	CONTINUE:        "CONTINUE",
 	BREAK:           "BREAK",
+	CALL:            "CALL",
 }
 
 var keywords = map[string]TokenType{
@@ -171,6 +173,7 @@ var keywords = map[string]TokenType{
 	"DO":       DO,
 	"BREAK":    BREAK,
 	"CONTINUE": CONTINUE,
+	"CALL":     CALL,
 }
 
 // LookupIdent checks if an identifier is a keyword

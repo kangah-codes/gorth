@@ -65,7 +65,7 @@
 #     "EQUAL" DUMP
 # ELSE
 #     "NOT EQUAL" DUMP
-# IF 
+# IF
 #     FALSE
 # END
 
@@ -75,6 +75,38 @@
 
 # result DUMPLN
 
-PROC hello () IN
-    "Hello, World from Gorth!" DUMPLN
-END
+# PROC hello (name) IN
+#     "Hello, " name + "!" + DUMPLN
+# END
+
+# function fib(n) {
+#     if (n == 0) {
+#         return 0;
+#     } else {
+#         if (n == 1) {
+#             return 1;
+#         } else {
+#             return fib(n - 1) + fib(n - 2);
+#         }
+#     }
+# }
+
+# PROC fib(n) IN
+#     DO
+#         0
+#     ELSE
+#         DO
+#             1
+#         ELSE
+#             n 1 - CALL fib
+#             n 2 - CALL fib
+#             +
+#         IF
+#             n 1 ==
+#         END
+#     IF
+#         n 0 ==
+#     END
+# END
+
+# 7 CALL fib DUMPLN

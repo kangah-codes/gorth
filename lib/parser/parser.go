@@ -126,6 +126,8 @@ func (p *Parser) parseStatement() (Node, error) {
 		return &BreakStmt{Pos: p.currentPosition}, nil
 	case lexer.CONTINUE:
 		return &ContinueStmt{Pos: p.currentPosition}, nil
+	case lexer.CALL:
+		return p.parseProcCall()
 	default:
 		return nil, fmt.Errorf("unexpected token %s at line %d, col %d",
 			lexer.TokenMap[p.currentToken], p.currentPosition.Line, p.currentPosition.Column)
@@ -524,6 +526,15 @@ func (p *Parser) parseWhileStmt() (Node, error) {
 		Condition: nil,
 		Position:  pos,
 	}, nil
+}
+
+func (p *Parser) parseProcCall() (Node, error) {
+	pos := p.currentPosition
+
+	// consume token
+	p.nextToken()
+
+	return &CallStmt{Pos: pos, ProcName: p.currentLiteral}, nil
 }
 
 func (p *Parser) parseProcedure() (Node, error) {
