@@ -114,10 +114,10 @@ func (p *Parser) parseStatement() (Node, error) {
 		return nil, fmt.Errorf("illegal token at line %d, col %d: %s",
 			p.currentPosition.Line, p.currentPosition.Column, p.currentLiteral)
 	// array literal
-	case lexer.LBRACKET:
+	case lexer.LSQUARE_BRACKET:
 		return p.parseArray()
-	// case lexer.DO:
-	// 	return p.parseDoStmt()
+	case lexer.PROC:
+		return p.parseProcedure()
 	case lexer.DO:
 		return p.parseDoStmt()
 	case lexer.WHILE:
@@ -289,7 +289,7 @@ func (p *Parser) parseConstDefinition() (Node, error) {
 		value = &BoolLiteral{Value: p.currentLiteral, Position: p.currentPosition, Token: p.currentToken}
 	case lexer.NULL:
 		value = &NullLiteral{Value: p.currentLiteral, Position: p.currentPosition, Token: p.currentToken}
-	case lexer.LBRACKET:
+	case lexer.LSQUARE_BRACKET:
 		arr, err := p.parseArray()
 		if err != nil {
 			return nil, err
@@ -357,7 +357,7 @@ func (p *Parser) parseArray() (Node, error) {
 	p.nextToken()
 
 	// Parse elements until we hit closing bracket
-	for !p.currentTokenIs(lexer.RBRACKET) && !p.currentTokenIs(lexer.EOF) {
+	for !p.currentTokenIs(lexer.RSQUARE_BRACKET) && !p.currentTokenIs(lexer.EOF) {
 		// Parse the element
 		elem, err := p.parseStatement()
 		if err != nil {
@@ -371,13 +371,13 @@ func (p *Parser) parseArray() (Node, error) {
 		// If it's a comma, skip it
 		if p.currentTokenIs(lexer.COMMA) {
 			p.nextToken()
-		} else if !p.currentTokenIs(lexer.RBRACKET) {
+		} else if !p.currentTokenIs(lexer.RSQUARE_BRACKET) {
 			return nil, fmt.Errorf("expected ',' or ']' in array but got %s at line %d, col %d",
 				lexer.TokenMap[p.currentToken], p.currentPosition.Line, p.currentPosition.Column)
 		}
 	}
 
-	if !p.currentTokenIs(lexer.RBRACKET) {
+	if !p.currentTokenIs(lexer.RSQUARE_BRACKET) {
 		return nil, fmt.Errorf("expected ']' to close array at line %d, col %d",
 			p.currentPosition.Line, p.currentPosition.Column)
 	}
@@ -524,6 +524,105 @@ func (p *Parser) parseWhileStmt() (Node, error) {
 		Condition: nil,
 		Position:  pos,
 	}, nil
+}
+
+func (p *Parser) parseProcedure() (Node, error) {
+	pos := p.currentPosition
+
+	// PROC add (a b)
+	// 	a b +
+	// END
+
+	if err := p.nextToken(); err != nil {
+		return nil, err
+	}
+
+	if !p.currentTokenIs(lexer.IDENT) {
+		return nil, fmt.Errorf("expected procedure name after PROC at line %d, col %d",
+			p.currentPosition.Line, p.currentPosition.Column)
+	}
+
+	procName := p.currentLiteral
+	// parse parameters
+	if err := p.nextToken(); err != nil {
+		return nil, err
+	}
+
+	if !p.currentTokenIs(lexer.LBRACKET) {
+		return nil, fmt.Errorf("expected '(' after procedure name at line %d, col %d",
+			p.currentPosition.Line, p.currentPosition.Column)
+	}
+
+	params := []Parameter{}
+	if err := p.nextToken(); err != nil {
+		return nil, err
+	}
+
+	for !p.currentTokenIs(lexer.RBRACKET) && !p.currentTokenIs(lexer.EOF) {
+		if !p.currentTokenIs(lexer.IDENT) {
+			return nil, fmt.Errorf("expected parameter name in procedure definition at line %d, col %d",
+				p.currentPosition.Line, p.currentPosition.Column)
+		}
+		params = append(params, Parameter{Name: p.currentLiteral, Pos: p.currentPosition})
+
+		if err := p.nextToken(); err != nil {
+			return nil, err
+		}
+
+		if p.currentTokenIs(lexer.COMMA) {
+			if err := p.nextToken(); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	if !p.currentTokenIs(lexer.RBRACKET) {
+		return nil, fmt.Errorf("expected ')' after procedure parameters at line %d, col %d",
+			p.currentPosition.Line, p.currentPosition.Column)
+	}
+
+	if err := p.nextToken(); err != nil {
+		return nil, err
+	}
+
+	if !p.currentTokenIs(lexer.IN) {
+		return nil, fmt.Errorf("expected IN after procedure parameters at line %d, col %d",
+			p.currentPosition.Line, p.currentPosition.Column)
+	}
+
+	// parse procedure body
+	if err := p.nextToken(); err != nil {
+		return nil, err
+	}
+
+	body := []Node{}
+	for !p.currentTokenIs(lexer.END) && !p.currentTokenIs(lexer.EOF) {
+		stmt, err := p.parseStatement()
+		if err != nil {
+			return nil, err
+		}
+
+		if stmt != nil {
+			body = append(body, stmt)
+		}
+
+		if err := p.nextToken(); err != nil {
+			return nil, err
+		}
+	}
+
+	if !p.currentTokenIs(lexer.END) {
+		return nil, fmt.Errorf("expected END at line %d, col %d",
+			p.currentPosition.Line, p.currentPosition.Column)
+	}
+
+	return &Procedure{
+		Name:       procName,
+		Parameters: params,
+		Body:       body,
+		Pos:        pos,
+	}, nil
+
 }
 
 func validateLoopControl(program *Program) error {

@@ -110,6 +110,13 @@ func PrintAST(node Node, indent int) string {
 	case *ContinueStmt:
 		fmt.Fprintf(&result, "%sContinue\n", prefix)
 
+	case *Procedure:
+		fmt.Fprintf(&result, "%sProcedure (name: %s)\n", prefix, n.Name)
+		result.WriteString(prefix + "  Params:\n")
+		for _, p := range n.Parameters {
+			result.WriteString(prefix + "  Param: " + p.Name + "\n")
+		}
+
 	default:
 		fmt.Fprintf(&result, "%sUnknown node type: %T\n", prefix, n)
 	}
@@ -228,6 +235,24 @@ type StackOp struct {
 func (s *StackOp) node() {}
 func (s *StackOp) String() string {
 	return fmt.Sprintf("%-15s %-15s %s", s.Operation, lexer.TokenMap[s.Operation], s.Pos)
+}
+
+type Parameter struct {
+	Name string
+	Pos  lexer.Position
+}
+
+// function declaration
+type Procedure struct {
+	Name       string
+	Parameters []Parameter
+	Body       []Node
+	Pos        lexer.Position
+}
+
+func (p *Procedure) node() {}
+func (p *Procedure) String() string {
+	return p.Name
 }
 
 // Variable assignment

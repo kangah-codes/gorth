@@ -15,12 +15,17 @@ import (
 var errBreakSignal = errors.New("gorth: break")
 var errContinueSignal = errors.New("gorth: continue")
 
+type Frame struct {
+	locals map[string]Value
+}
+
 type GorthRuntime struct {
 	dataStack   *Stack
+	callStack   []*Frame
 	returnStack *Stack
 	variables   map[string]Value
 	constants   map[string]Value
-	words       map[string]*Word
+	procedures  map[string]*parser.Procedure
 	memory      []Value
 	halted      bool
 	out         io.Writer
@@ -32,7 +37,7 @@ func NewRuntime() *GorthRuntime {
 		returnStack: &Stack{items: make([]Value, 0), max: 100},
 		variables:   make(map[string]Value),
 		constants:   make(map[string]Value),
-		words:       make(map[string]*Word),
+		procedures:  make(map[string]*parser.Procedure),
 		memory:      make([]Value, 0),
 		halted:      false,
 		out:         os.Stdout,
@@ -107,6 +112,8 @@ func (r *GorthRuntime) executeNode(node parser.Node) error {
 		return errBreakSignal
 	case *parser.ContinueStmt:
 		return errContinueSignal
+	case *parser.Procedure:
+		return r.execProcedure(n)
 	default:
 		return fmt.Errorf("unknown node type: %T", node)
 	}
@@ -365,10 +372,10 @@ func (r *GorthRuntime) execIdentifier(n *parser.Identifier) error {
 	}
 
 	// check if its user defined word
-	if _, ok := r.words[n.Value]; ok {
-		// TODO: execute word
-		return fmt.Errorf("word execution not yet implemented: %s", n.Value)
-	}
+	// if _, ok := r.procedures[n.Value]; ok {
+	// 	// TODO: execute word
+	// 	return fmt.Errorf("word execution not yet implemented: %s", n.Value)
+	// }
 
 	// If identifier is undefined, push its name as a string
 	// This allows it to be used for assignment: value identifier :=
@@ -534,6 +541,17 @@ func (r *GorthRuntime) execWhileStmt(n *parser.WhileStmt) error {
 		if !condition.Data.(bool) {
 			break
 		}
+	}
+
+	return nil
+}
+
+func (r *GorthRuntime) execProcedure(n *parser.Procedure) error {
+	r.procedures[n.Name] = n
+
+	for _, param := range n.Parameters {
+		// declare parameters as variables with null values
+		r.variables[param.Name] = Value{Type: TYPE_NULL, Data: nil}
 	}
 
 	return nil
@@ -847,11 +865,11 @@ func (r *GorthRuntime) PrintState() {
 		}
 	}
 
-	fmt.Println("\nUser-defined Words:")
-	if len(r.words) == 0 {
+	fmt.Println("\nUser-defined Procedures:")
+	if len(r.procedures) == 0 {
 		fmt.Println("  <none>")
 	} else {
-		for name := range r.words {
+		for name := range r.procedures {
 			fmt.Printf("  %s\n", name)
 		}
 	}

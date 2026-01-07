@@ -490,41 +490,87 @@ func TestClassifyIdent(t *testing.T) {
 			input:         "DEC",
 			expectedToken: OP_DEC,
 		},
-		// Invalid identifiers
+		// Additional keywords
 		{
-			name:          "unknown identifier returns illegal",
+			name:          "classify dumpln operation",
+			input:         "DUMPLN",
+			expectedToken: OP_DUMPLN,
+		},
+		{
+			name:          "classify if keyword",
+			input:         "IF",
+			expectedToken: IF,
+		},
+		{
+			name:          "classify else keyword",
+			input:         "ELSE",
+			expectedToken: ELSE,
+		},
+		{
+			name:          "classify end keyword",
+			input:         "END",
+			expectedToken: END,
+		},
+		{
+			name:          "classify while keyword",
+			input:         "WHILE",
+			expectedToken: WHILE,
+		},
+		{
+			name:          "classify do keyword",
+			input:         "DO",
+			expectedToken: DO,
+		},
+		{
+			name:          "classify break keyword",
+			input:         "BREAK",
+			expectedToken: BREAK,
+		},
+		{
+			name:          "classify continue keyword",
+			input:         "CONTINUE",
+			expectedToken: CONTINUE,
+		},
+		{
+			name:          "classify var keyword",
+			input:         "VAR",
+			expectedToken: VAR,
+		},
+		// Non-keyword identifiers
+		{
+			name:          "unknown identifier returns ident",
 			input:         "unknown",
-			expectedToken: ILLEGAL,
+			expectedToken: IDENT,
 		},
 		{
-			name:          "random string returns illegal",
+			name:          "random string returns ident",
 			input:         "randomString",
-			expectedToken: ILLEGAL,
+			expectedToken: IDENT,
 		},
 		{
-			name:          "mixed case boolean returns illegal",
+			name:          "mixed case boolean returns ident",
 			input:         "True",
-			expectedToken: ILLEGAL,
+			expectedToken: IDENT,
 		},
 		{
-			name:          "mixed case boolean false returns illegal",
+			name:          "mixed case boolean false returns ident",
 			input:         "False",
-			expectedToken: ILLEGAL,
+			expectedToken: IDENT,
 		},
 		{
-			name:          "empty string returns illegal",
+			name:          "empty string returns ident",
 			input:         "",
-			expectedToken: ILLEGAL,
+			expectedToken: IDENT,
 		},
 		{
-			name:          "single character returns illegal",
+			name:          "single character returns ident",
 			input:         "x",
-			expectedToken: ILLEGAL,
+			expectedToken: IDENT,
 		},
 		{
-			name:          "number-like string returns illegal",
+			name:          "number-like string returns ident",
 			input:         "123abc",
-			expectedToken: ILLEGAL,
+			expectedToken: IDENT,
 		},
 	}
 
@@ -589,10 +635,10 @@ func TestReadIdent(t *testing.T) {
 			expectedTokenType: OP_DUMP,
 		},
 		{
-			name:              "return correct literal and tokentype for illegal input",
+			name:              "return correct literal and tokentype for identifier input",
 			input:             "mala",
 			expectedLiteral:   "mala",
-			expectedTokenType: ILLEGAL,
+			expectedTokenType: IDENT,
 		},
 	}
 
@@ -1145,8 +1191,8 @@ func TestNextToken(t *testing.T) {
 			name:  "brackets and comma",
 			input: "[ ] ,",
 			expectedTokens: []Token{
-				{Type: LBRACKET, Literal: "[", Pos: Position{Line: 1, Column: 1}},
-				{Type: RBRACKET, Literal: "]", Pos: Position{Line: 1, Column: 3}},
+				{Type: LSQUARE_BRACKET, Literal: "[", Pos: Position{Line: 1, Column: 1}},
+				{Type: RSQUARE_BRACKET, Literal: "]", Pos: Position{Line: 1, Column: 3}},
 				{Type: COMMA, Literal: ",", Pos: Position{Line: 1, Column: 5}},
 				{Type: EOF, Literal: "", Pos: Position{Line: 1, Column: 6}},
 			},
@@ -1162,10 +1208,11 @@ func TestNextToken(t *testing.T) {
 		},
 		{
 			name:  "variable",
-			input: "$myvar",
+			input: "VAR myvar",
 			expectedTokens: []Token{
-				{Type: VAR, Literal: "$myvar", Pos: Position{Line: 1, Column: 1}},
-				{Type: EOF, Literal: "", Pos: Position{Line: 1, Column: 7}},
+				{Type: VAR, Literal: "VAR", Pos: Position{Line: 1, Column: 1}},
+				{Type: IDENT, Literal: "myvar", Pos: Position{Line: 1, Column: 5}},
+				{Type: EOF, Literal: "", Pos: Position{Line: 1, Column: 10}},
 			},
 		},
 		{
@@ -1222,14 +1269,14 @@ func TestNextToken(t *testing.T) {
 		},
 		{
 			name:  "complex expression",
-			input: "$x $y + 42 ==",
+			input: "x y + 42 ==",
 			expectedTokens: []Token{
-				{Type: VAR, Literal: "$x", Pos: Position{Line: 1, Column: 1}},
-				{Type: VAR, Literal: "$y", Pos: Position{Line: 1, Column: 4}},
-				{Type: OP_PLUS, Literal: "+", Pos: Position{Line: 1, Column: 7}},
-				{Type: INT, Literal: "42", Pos: Position{Line: 1, Column: 9}},
-				{Type: OP_EQ, Literal: "==", Pos: Position{Line: 1, Column: 12}},
-				{Type: EOF, Literal: "", Pos: Position{Line: 1, Column: 13}},
+				{Type: IDENT, Literal: "x", Pos: Position{Line: 1, Column: 1}},
+				{Type: IDENT, Literal: "y", Pos: Position{Line: 1, Column: 3}},
+				{Type: OP_PLUS, Literal: "+", Pos: Position{Line: 1, Column: 5}},
+				{Type: INT, Literal: "42", Pos: Position{Line: 1, Column: 7}},
+				{Type: OP_EQ, Literal: "==", Pos: Position{Line: 1, Column: 10}},
+				{Type: EOF, Literal: "", Pos: Position{Line: 1, Column: 12}},
 			},
 		},
 	}

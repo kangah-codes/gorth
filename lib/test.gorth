@@ -69,4 +69,12 @@
 #     FALSE
 # END
 
-0 := 0
+# 100 := VAR result
+
+# result result 2 ^ -1 * := result
+
+# result DUMPLN
+
+PROC hello () IN
+    "Hello, World from Gorth!" DUMPLN
+END

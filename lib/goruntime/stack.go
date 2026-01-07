@@ -2,7 +2,6 @@ package runtime
 
 import (
 	"fmt"
-	"gorth/parser"
 )
 
 type Value struct {
@@ -21,11 +20,6 @@ const (
 	TYPE_ARRAY
 	TYPE_WORD
 )
-
-type Word struct {
-	Name string
-	Body []parser.Node
-}
 
 type Stack struct {
 	items []Value
