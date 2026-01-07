@@ -319,7 +319,7 @@ type DoStmt struct {
 }
 
 type IfStmt struct {
-	Condition  Node
+	Condition  []Node
 	ThenBranch []Node
 	ElseBranch []Node
 	Position   lexer.Position
@@ -331,7 +331,7 @@ func (i *IfStmt) String() string {
 }
 
 type WhileStmt struct {
-	Condition Node
+	Condition []Node
 	Body      []Node
 	Position  lexer.Position
 }

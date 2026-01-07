@@ -164,8 +164,6 @@ func (r *GorthRuntime) execUnaryOp(n *parser.UnaryExpression) error {
 		return fmt.Errorf("unknown unary operator: %s", lexer.TokenMap[n.Operator])
 	}
 
-	fmt.Printf("RESULT TO PUSH: %v\n", result)
-
 	return r.dataStack.Push(result)
 }
 
@@ -460,13 +458,10 @@ func (r *GorthRuntime) execBinaryOp(n *parser.BinaryExpression) error {
 }
 
 func (r *GorthRuntime) execIfStmt(n *parser.IfStmt) error {
-	// this will add the executed condition onto the stack
-	// I pop it after to consume so it's not harmful for now
-	// but I don't think its clean
-	// TODO: find way to refactor outside stack
-	err := r.executeNode(n.Condition)
-	if err != nil {
-		return err
+	for _, stmt := range n.Condition {
+		if err := r.executeNode(stmt); err != nil {
+			return err
+		}
 	}
 
 	condition, err := r.dataStack.Pop()
@@ -499,7 +494,7 @@ func (r *GorthRuntime) execIfStmt(n *parser.IfStmt) error {
 
 func (r *GorthRuntime) execWhileStmt(n *parser.WhileStmt) error {
 	for {
-		// execute body since condition is at end of body
+		// execute body
 		for _, stmt := range n.Body {
 			if err := r.executeNode(stmt); err != nil {
 				if errors.Is(err, errContinueSignal) {
@@ -508,6 +503,19 @@ func (r *GorthRuntime) execWhileStmt(n *parser.WhileStmt) error {
 				}
 				if errors.Is(err, errBreakSignal) {
 					// exit the nearest enclosing loop immediately
+					return nil
+				}
+				return err
+			}
+		}
+
+		// execute postfix condition block
+		for _, stmt := range n.Condition {
+			if err := r.executeNode(stmt); err != nil {
+				if errors.Is(err, errContinueSignal) {
+					break
+				}
+				if errors.Is(err, errBreakSignal) {
 					return nil
 				}
 				return err
@@ -558,7 +566,26 @@ func (r *GorthRuntime) dec(op Value) (Value, error) {
 func (r *GorthRuntime) add(left, right Value) (Value, error) {
 	isLeftNumeric := left.Type == TYPE_INT || left.Type == TYPE_FLOAT
 	isRightNumeric := right.Type == TYPE_INT || right.Type == TYPE_FLOAT
+	isLeftString := left.Type == TYPE_STR
+	isRightString := right.Type == TYPE_STR
 
+	// TODO: refactor this later
+	// string concatenation
+	if isLeftString && isRightString {
+		return Value{Type: TYPE_STR, Data: fmt.Sprintf("%s%s", left.Data.(string), right.Data.(string))}, nil
+	}
+
+	// string + numeric
+	if isLeftString && isRightNumeric {
+		return Value{Type: TYPE_STR, Data: fmt.Sprintf("%s%s", left.Data.(string), r.valueToString(right))}, nil
+	}
+
+	// numeric + string
+	if isLeftNumeric && isRightString {
+		return Value{Type: TYPE_STR, Data: fmt.Sprintf("%s%s", r.valueToString(left), right.Data.(string))}, nil
+	}
+
+	// numeric addition
 	if !isLeftNumeric || !isRightNumeric {
 		return Value{}, fmt.Errorf(
 			"cannot add %s and %s",

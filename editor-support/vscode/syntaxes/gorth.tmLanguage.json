@@ -55,7 +55,7 @@
 			"patterns": [
 				{
 					"name": "keyword.control.gorth",
-					"match": "\\b(CONST|VAR|IF|ELSE|END|WHILE)\\b"
+					"match": "\\b(CONST|VAR|IF|ELSE|END|WHILE|DO)\\b"
 				}
 			]
 		},
@@ -107,7 +107,7 @@
 			"patterns": [
 				{
 					"name": "constant.language.boolean.gorth",
-					"match": "\\b(TRUE|FALSE|true|false)\\b"
+					"match": "\\b(TRUE|FALSE)\\b"
 				}
 			]
 		},

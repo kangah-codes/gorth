@@ -69,6 +69,10 @@ func (p *Parser) Parse() (*Program, error) {
 		p.nextToken()
 	}
 
+	if err := validateLoopControl(program); err != nil {
+		return nil, err
+	}
+
 	return program, nil
 }
 
@@ -115,20 +119,12 @@ func (p *Parser) parseStatement() (Node, error) {
 	// case lexer.DO:
 	// 	return p.parseDoStmt()
 	case lexer.DO:
-		return p.parseIfStmt()
+		return p.parseDoStmt()
 	case lexer.WHILE:
 		return p.parseWhileStmt()
 	case lexer.BREAK:
-		if p.loopDepth <= 0 {
-			return nil, fmt.Errorf("BREAK can only be used inside a WHILE loop at line %d, col %d",
-				p.currentPosition.Line, p.currentPosition.Column)
-		}
 		return &BreakStmt{Pos: p.currentPosition}, nil
 	case lexer.CONTINUE:
-		if p.loopDepth <= 0 {
-			return nil, fmt.Errorf("CONTINUE can only be used inside a WHILE loop at line %d, col %d",
-				p.currentPosition.Line, p.currentPosition.Column)
-		}
 		return &ContinueStmt{Pos: p.currentPosition}, nil
 	default:
 		return nil, fmt.Errorf("unexpected token %s at line %d, col %d",
@@ -392,53 +388,72 @@ func (p *Parser) parseArray() (Node, error) {
 	}, nil
 }
 
-func (p *Parser) parseIfStmt() (Node, error) {
+func (p *Parser) parseDoStmt() (Node, error) {
+	// DO ... WHILE <cond> END
+	// DO ... [ELSE ...] IF <cond> END
 	pos := p.currentPosition
 
 	if err := p.nextToken(); err != nil {
 		return nil, err
 	}
 
-	// then branch should be a series of nodes
-	thenBranch := []Node{}
-	for !p.currentTokenIs(lexer.IF) && !p.currentTokenIs(lexer.ELSE) && !p.currentTokenIs(lexer.END) && !p.currentTokenIs(lexer.EOF) {
+	thenOrBody := []Node{}
+	for !p.currentTokenIs(lexer.WHILE) && !p.currentTokenIs(lexer.IF) && !p.currentTokenIs(lexer.ELSE) && !p.currentTokenIs(lexer.END) && !p.currentTokenIs(lexer.EOF) {
 		stmt, err := p.parseStatement()
 		if err != nil {
 			return nil, err
 		}
-
-		// add the statement to the thenbranch if if exists
 		if stmt != nil {
-			thenBranch = append(thenBranch, stmt)
+			thenOrBody = append(thenOrBody, stmt)
 		}
-
-		// advance the parser
 		if err := p.nextToken(); err != nil {
 			return nil, err
 		}
 	}
 
-	// parse optional else
-	var elseBranch []Node
-	if p.currentTokenIs(lexer.ELSE) {
-		// consume ELSE
+	// do-while form
+	if p.currentTokenIs(lexer.WHILE) {
+		// consume WHILE
 		if err := p.nextToken(); err != nil {
 			return nil, err
 		}
 
-		// In DO ... ELSE ... IF ... END form, ELSE branch ends at IF
+		cond := []Node{}
+		for !p.currentTokenIs(lexer.END) && !p.currentTokenIs(lexer.EOF) {
+			stmt, err := p.parseStatement()
+			if err != nil {
+				return nil, err
+			}
+			if stmt != nil {
+				cond = append(cond, stmt)
+			}
+			if err := p.nextToken(); err != nil {
+				return nil, err
+			}
+		}
+
+		if !p.currentTokenIs(lexer.END) {
+			return nil, fmt.Errorf("expected END at line %d, col %d",
+				p.currentPosition.Line, p.currentPosition.Column)
+		}
+
+		return &WhileStmt{Body: thenOrBody, Condition: cond, Position: pos}, nil
+	}
+
+	// do-if form
+	var elseBranch []Node
+	if p.currentTokenIs(lexer.ELSE) {
+		if err := p.nextToken(); err != nil {
+			return nil, err
+		}
 		for !p.currentTokenIs(lexer.IF) && !p.currentTokenIs(lexer.END) && !p.currentTokenIs(lexer.EOF) {
 			stmt, err := p.parseStatement()
 			if err != nil {
 				return nil, err
 			}
-
-			// add the statement to the thenbranch if if exists
 			if stmt != nil {
 				elseBranch = append(elseBranch, stmt)
 			}
-
-			// advance the parser
 			if err := p.nextToken(); err != nil {
 				return nil, err
 			}
@@ -450,37 +465,30 @@ func (p *Parser) parseIfStmt() (Node, error) {
 			p.currentPosition.Line, p.currentPosition.Column, lexer.TokenMap[p.currentToken])
 	}
 
-	// consume IF
 	if err := p.nextToken(); err != nil {
 		return nil, err
 	}
 
-	var condition Node
+	cond := []Node{}
 	for !p.currentTokenIs(lexer.END) && !p.currentTokenIs(lexer.EOF) {
 		stmt, err := p.parseStatement()
 		if err != nil {
 			return nil, err
 		}
-
-		condition = stmt
+		if stmt != nil {
+			cond = append(cond, stmt)
+		}
 		if err := p.nextToken(); err != nil {
 			return nil, err
 		}
 	}
 
-	// expect an end
 	if !p.currentTokenIs(lexer.END) {
 		return nil, fmt.Errorf("expected END at line %d, col %d",
 			p.currentPosition.Line, p.currentPosition.Column)
 	}
 
-	return &IfStmt{
-		ThenBranch: thenBranch,
-		ElseBranch: elseBranch,
-		Position:   pos,
-		Condition:  condition,
-	}, nil
-
+	return &IfStmt{ThenBranch: thenOrBody, ElseBranch: elseBranch, Position: pos, Condition: cond}, nil
 }
 
 func (p *Parser) parseWhileStmt() (Node, error) {
@@ -489,9 +497,6 @@ func (p *Parser) parseWhileStmt() (Node, error) {
 	if err := p.nextToken(); err != nil {
 		return nil, err
 	}
-
-	p.loopDepth++
-	defer func() { p.loopDepth-- }()
 
 	body := []Node{}
 	for !p.currentTokenIs(lexer.END) && !p.currentTokenIs(lexer.EOF) {
@@ -515,7 +520,62 @@ func (p *Parser) parseWhileStmt() (Node, error) {
 	}
 
 	return &WhileStmt{
-		Body:     body,
-		Position: pos,
+		Body:      body,
+		Condition: nil,
+		Position:  pos,
 	}, nil
+}
+
+func validateLoopControl(program *Program) error {
+	var walk func(n Node, depth int) error
+	walk = func(n Node, depth int) error {
+		switch x := n.(type) {
+		case *Program:
+			for _, s := range x.Statements {
+				if err := walk(s, depth); err != nil {
+					return err
+				}
+			}
+		case *WhileStmt:
+			for _, s := range x.Body {
+				if err := walk(s, depth+1); err != nil {
+					return err
+				}
+			}
+			for _, s := range x.Condition {
+				if err := walk(s, depth+1); err != nil {
+					return err
+				}
+			}
+		case *IfStmt:
+			for _, s := range x.ThenBranch {
+				if err := walk(s, depth); err != nil {
+					return err
+				}
+			}
+			for _, s := range x.ElseBranch {
+				if err := walk(s, depth); err != nil {
+					return err
+				}
+			}
+			for _, s := range x.Condition {
+				if err := walk(s, depth); err != nil {
+					return err
+				}
+			}
+		case *BreakStmt:
+			if depth <= 0 {
+				return fmt.Errorf("BREAK can only be used inside a WHILE loop at line %d, col %d", x.Pos.Line, x.Pos.Column)
+			}
+		case *ContinueStmt:
+			if depth <= 0 {
+				return fmt.Errorf("CONTINUE can only be used inside a WHILE loop at line %d, col %d", x.Pos.Line, x.Pos.Column)
+			}
+		default:
+			// other nodes: ok
+		}
+		return nil
+	}
+
+	return walk(program, 0)
 }
