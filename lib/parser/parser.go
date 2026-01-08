@@ -126,6 +126,8 @@ func (p *Parser) parseStatement() (Node, error) {
 		return &BreakStmt{Pos: p.currentPosition}, nil
 	case lexer.CONTINUE:
 		return &ContinueStmt{Pos: p.currentPosition}, nil
+	case lexer.RETURN:
+		return &ReturnStmt{Pos: p.currentPosition}, nil
 	case lexer.CALL:
 		return p.parseProcCall()
 	default:

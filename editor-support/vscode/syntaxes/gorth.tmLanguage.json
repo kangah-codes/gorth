@@ -56,7 +56,7 @@
 			"patterns": [
 				{
 					"name": "keyword.control.gorth",
-					"match": "\\b(CONST|VAR|IF|ELSE|END|WHILE|DO|PROC|IN|BREAK|CONTINUE)\\b"
+					"match": "\\b(CONST|VAR|IF|ELSE|END|WHILE|DO|PROC|IN|BREAK|CONTINUE|RETURN)\\b"
 				}
 			]
 		},

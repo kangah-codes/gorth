@@ -166,8 +166,7 @@
 
 # PROC isPrime(n) IN
 #     DO
-#         FALSE
-#         BREAK
+#         FALSE RETURN
 #     IF
 #         n 1 <=
 #     END
@@ -176,17 +175,18 @@
 
 #     DO
 #         DO
-#             FALSE
-#             BREAK
+#             FALSE RETURN
 #         IF
 #             n i % 0 ==
 #         END
-#         i INC
+#         i INC := i
 #     WHILE
 #         i i * n <=
 #     END
 
-#     TRUE
+#     TRUE RETURN
 # END
 
-13 CALL isPrime DUMPLN
+[1,2,3] := VAR array
+
+array.PUSH 5

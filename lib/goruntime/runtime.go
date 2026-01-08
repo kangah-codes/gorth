@@ -14,6 +14,7 @@ import (
 
 var errBreakSignal = errors.New("gorth: break")
 var errContinueSignal = errors.New("gorth: continue")
+var errReturnSignal = errors.New("gorth: return")
 
 type Frame struct {
 	locals map[string]Value
@@ -52,6 +53,11 @@ func (r *GorthRuntime) Execute(program *parser.Program) error {
 
 		err := r.executeNode(stmt)
 		if err != nil {
+			if errors.Is(err, errReturnSignal) {
+				// RETURN at top-level halts execution
+				r.halted = true
+				break
+			}
 			return err
 		}
 	}
@@ -112,6 +118,16 @@ func (r *GorthRuntime) executeNode(node parser.Node) error {
 		return errBreakSignal
 	case *parser.ContinueStmt:
 		return errContinueSignal
+	case *parser.ReturnStmt:
+		// pop top of the data stack and stash it as the procedure return value
+		val, err := r.dataStack.Pop()
+		if err != nil {
+			return err
+		}
+		if err := r.returnStack.Push(val); err != nil {
+			return err
+		}
+		return errReturnSignal
 	case *parser.Procedure:
 		return r.execAddProcedure(n)
 	case *parser.CallStmt:
@@ -616,6 +632,17 @@ func (r *GorthRuntime) execProcBody(n *parser.CallStmt) error {
 	// execute procedure body
 	for _, stmt := range procedure.Body {
 		if err := r.executeNode(stmt); err != nil {
+			// handle return signal: drop frame and return normally
+			if errors.Is(err, errReturnSignal) {
+				// move return value from returnStack back to caller's dataStack
+				r.callStack = r.callStack[:len(r.callStack)-1]
+				if r.returnStack.Size() > 0 {
+					retVal, _ := r.returnStack.Pop()
+					r.dataStack.Push(retVal)
+				}
+				return nil
+			}
+			r.callStack = r.callStack[:len(r.callStack)-1]
 			return err
 		}
 	}

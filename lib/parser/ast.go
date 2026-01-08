@@ -110,6 +110,9 @@ func PrintAST(node Node, indent int) string {
 	case *ContinueStmt:
 		fmt.Fprintf(&result, "%sContinue\n", prefix)
 
+	case *ReturnStmt:
+		fmt.Fprintf(&result, "%sReturn\n", prefix)
+
 	case *Procedure:
 		fmt.Fprintf(&result, "%sProcedure (name: %s)\n", prefix, n.Name)
 		result.WriteString(prefix + "  Params:\n")
@@ -392,6 +395,15 @@ type ContinueStmt struct {
 func (c *ContinueStmt) node() {}
 func (c *ContinueStmt) String() string {
 	return fmt.Sprintf("%-15s %-15s %s", "CONTINUE", "", c.Pos)
+}
+
+type ReturnStmt struct {
+	Pos lexer.Position
+}
+
+func (r *ReturnStmt) node() {}
+func (r *ReturnStmt) String() string {
+	return fmt.Sprintf("%-15s %-15s %s", "RETURN", "", r.Pos)
 }
 
 // SimulateStack shows what the stack looks like as the program executes

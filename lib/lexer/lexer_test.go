@@ -536,6 +536,11 @@ func TestClassifyIdent(t *testing.T) {
 			input:         "VAR",
 			expectedToken: VAR,
 		},
+		{
+			name:          "classify call keyword",
+			input:         "CALL",
+			expectedToken: CALL,
+		},
 		// Non-keyword identifiers
 		{
 			name:          "unknown identifier returns ident",
