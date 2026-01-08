@@ -33,8 +33,8 @@ type GorthRuntime struct {
 
 func NewRuntime() *GorthRuntime {
 	return &GorthRuntime{
-		dataStack:   &Stack{items: make([]Value, 0), max: 100},
-		returnStack: &Stack{items: make([]Value, 0), max: 100},
+		dataStack:   &Stack{items: make([]Value, 0), max: 1000},
+		returnStack: &Stack{items: make([]Value, 0), max: 1000},
 		variables:   make(map[string]Value),
 		constants:   make(map[string]Value),
 		procedures:  make(map[string]*parser.Procedure),
@@ -177,7 +177,15 @@ func (r *GorthRuntime) execUnaryOp(n *parser.UnaryExpression) error {
 }
 
 func (r *GorthRuntime) execVarDeclaration(n *parser.VarDeclaration) error {
-	// VAR just declares a variable with null value
+	// VAR declares a variable. If we're executing inside a procedure call,
+	// create the variable in the current call frame's locals so it's local
+	// to the procedure. Otherwise create a global variable.
+	if len(r.callStack) > 0 {
+		top := r.callStack[len(r.callStack)-1]
+		top.locals[n.Name] = Value{Type: TYPE_NULL, Data: nil}
+		return nil
+	}
+
 	r.variables[n.Name] = Value{Type: TYPE_NULL, Data: nil}
 	return nil
 }
@@ -314,7 +322,18 @@ func (r *GorthRuntime) execAssignment(n *parser.Assignment) error {
 		return nil
 	}
 
-	// Regular assignment: value := x (requires x to exist)
+	// Regular assignment: value := x
+	// prefer writing into the current call frame locals if present
+	// otherwise write to globals. This allows procedure parameters and
+	// local vars to be updated correctly
+	if len(r.callStack) > 0 {
+		top := r.callStack[len(r.callStack)-1]
+		if _, ok := top.locals[name]; ok {
+			top.locals[name] = val
+			return nil
+		}
+	}
+
 	if _, ok := r.variables[name]; !ok {
 		return fmt.Errorf("undefined variable %s", name)
 	}
@@ -463,6 +482,8 @@ func (r *GorthRuntime) execBinaryOp(n *parser.BinaryExpression) error {
 		result, err = r.compareLogical(left, right, func(a, b Value) bool {
 			return a.Data.(bool) || b.Data.(bool)
 		})
+	case lexer.OP_MODULO:
+		result, err = r.modulo(left, right)
 	default:
 		return fmt.Errorf("unknown operator: %s", lexer.TokenMap[n.Operator])
 	}
@@ -559,11 +580,8 @@ func (r *GorthRuntime) execWhileStmt(n *parser.WhileStmt) error {
 func (r *GorthRuntime) execAddProcedure(n *parser.Procedure) error {
 	r.procedures[n.Name] = n
 
-	for _, param := range n.Parameters {
-		// declare parameters as variables with null values
-		r.variables[param.Name] = Value{Type: TYPE_NULL, Data: nil}
-	}
-
+	// params are bound into a call frame at call time
+	// do not create global variables for them here to avoid clobbering local state.
 	return nil
 }
 

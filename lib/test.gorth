@@ -110,3 +110,83 @@
 # END
 
 # 7 CALL fib DUMPLN
+
+# gcd(a, b):
+#     while b != 0:
+#         t = b
+#         b = a % b
+#         a = t
+#     return a
+
+# PROC gcd(a, b) IN
+#     VAR temp
+
+#     DO
+#         b := temp
+#         a b % := b
+#         temp := a
+#     WHILE
+#         b 0 !=
+#     END
+
+#     a
+# END
+
+
+# 2 3 CALL gcd DUMPLN
+
+# fact(n):
+#     result = 1
+#     while n > 1:
+#         result = result * n
+#         n = n - 1
+#     return result
+
+# PROC factorial(n) IN
+#     1 := VAR result
+
+#     DO
+#         result n * := result
+#         n 1 - := n
+
+#     WHILE
+#         n 1 >
+#     END
+
+#     result
+# END
+
+# isPrime(n):
+#     if n <= 1: return false
+#     i = 2
+#     while i * i <= n:
+#         if n % i == 0: return false
+#         i++
+#     return true
+
+# PROC isPrime(n) IN
+#     DO
+#         FALSE
+#         BREAK
+#     IF
+#         n 1 <=
+#     END
+
+#     2 := VAR i
+
+#     DO
+#         DO
+#             FALSE
+#             BREAK
+#         IF
+#             n i % 0 ==
+#         END
+#         i INC
+#     WHILE
+#         i i * n <=
+#     END
+
+#     TRUE
+# END
+
+13 CALL isPrime DUMPLN
