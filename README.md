@@ -1,4 +1,4 @@
-# Gorth Langu
+# Gorth Lang
 
 Gorth is a stack-based, postfix notation programming language inspired by Forth. It features:
 
