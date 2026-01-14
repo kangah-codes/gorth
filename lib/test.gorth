@@ -186,7 +186,3 @@
 
 #     TRUE RETURN
 # END
-
-[1,2,3] := VAR array
-
-array.PUSH 5
