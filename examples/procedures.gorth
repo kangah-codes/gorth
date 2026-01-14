@@ -1,0 +1,58 @@
+# Procedure example
+PROC greet(name) IN
+  "Hello, " name + DUMPLN
+END
+
+## function to return true if a number is prime or not
+# JS equivalent
+# isPrime(n):
+#     if n <= 1: return false
+#     i = 2
+#     while i * i <= n:
+#         if n % i == 0: return false
+#         i++
+#     return true
+
+PROC isPrime(n) IN
+    DO
+        FALSE RETURN
+    IF
+        n 1 <=
+    END
+
+    2 := VAR i
+
+    DO
+        DO
+            FALSE RETURN
+        IF
+            n i % 0 ==
+        END
+        i INC := i
+    WHILE
+        i i * n <=
+    END
+
+    TRUE RETURN
+END
+
+# function to return factorial of an integer
+# fact(n):
+#     result = 1
+#     while n > 1:
+#         result = result * n
+#         n = n - 1
+#     return result
+PROC factorial(n) IN
+    1 := VAR result
+
+    DO
+        result n * := result
+        n 1 - := n
+
+    WHILE
+        n 1 >
+    END
+
+    result
+END

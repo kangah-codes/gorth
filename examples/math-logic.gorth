@@ -1,0 +1,11 @@
+# Math operations
+2 3 + DUMP
+2 3 * DUMP
+2 3 / DUMP
+2 3 - DUMP
+2 3 ^ DUMP
+2 3 % DUMP
+
+# Logical operations
+TRUE TRUE && DUMP
+TRUE FALSE || DUMP

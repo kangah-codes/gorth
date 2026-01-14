@@ -1,0 +1,37 @@
+# Control flow examples
+
+# if statements
+# DO
+#     IF BRANCH
+# ELSE
+#     ELSE BRANCH
+# IF
+#     STATEMENT
+# END
+
+17 := VAR drinkingAge
+
+DO
+    "You are old enough to drink." DUMPLN
+ELSE
+    "You are not old enough to drink." DUMPLN
+IF
+    drinkingAge 21 >=
+END
+
+
+# while statements
+# DO
+#     IF BRANCH
+# WHILE
+#     STATEMENT
+# END
+
+5 := VAR x
+
+DO
+  x DUMPLN
+  x 1 - := x
+WHILE
+    x 0 >
+END

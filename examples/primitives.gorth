@@ -1,0 +1,7 @@
+# Primitive types
+42 DUMP
+3.14 DUMP
+"Hello, Gorth!" DUMP
+TRUE DUMP
+FALSE DUMP
+[1, 2, 3] DUMP
